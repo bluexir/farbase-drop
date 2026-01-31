@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FarBase Grid | Skill-Based Speedrun</title>
+    
+    <!-- Farcaster Frame Meta Tags -->
+    <meta property="fc:frame" content="vNext" />
+    <meta property="fc:frame:image" content="https://your-domain.com/preview.png" />
+    <meta property="fc:frame:button:1" content="🎮 Free Practice" />
+    <meta property="fc:frame:button:2" content="🏆 Tournament (1 USDC)" />
+    <meta property="fc:frame:button:3" content="📊 Leaderboard" />
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; overflow: hidden; width: 100%; height: 100vh; }
+        .container { width: 100%; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 50%, #0a0a1a 0%, #000 100%); position: relative; }
+        
+        /* Neon */
+        .neon { color: #00f3ff; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff; }
+        
+        /* Screens */
+        .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.3s ease-out; }
+        .screen.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        
+        /* Main Menu */
+        .logo { font-size: 2.5rem; font-weight: 900; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+        .subtitle { color: #888; margin-bottom: 30px; font-size: 0.9rem; text-align: center; }
+        
+        .mode-btn { width: 100%; max-width: 350px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.05); border: 1px solid rgba(0,243,255,0.3); border-radius: 16px; cursor: pointer; transition: all 0.3s; position: relative; overflow: hidden; color: #fff; }
+        .mode-btn:hover { transform: translateY(-2px); border-color: #00f3ff; background: rgba(0,243,255,0.1); }
+        .mode-btn.tournament { border-color: rgba(255,0,255,0.3); }
+        .mode-btn.tournament:hover { border-color: #ff00ff; background: rgba(255,0,255,0.1); }
+        .mode-title { font-size: 1.2rem; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        .mode-desc { font-size: 0.85rem; color: #888; margin-top: 5px; }
+        .badge { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; }
+        .badge.low { background: rgba(255,0,0,0.3); color: #ff4444; }
+        
+        /* Game Canvas */
+        #gameCanvas { border: 2px solid #00f3ff; border-radius: 8px; box-shadow: 0 0 20px rgba(0,243,255,0.3); background: #000; max-width: 95vw; max-height: 50vh; image-rendering: pixelated; }
+        
+        .hud { position: absolute; top: 60px; left: 0; width: 100%; display: flex; justify-content: space-between; padding: 0 20px; pointer-events: none; }
+        .hud-box { background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 20px; font-family: monospace; font-size: 1.1rem; backdrop-filter: blur(10px); }
+        .hud-box.timer { border-color: #00f3ff; color: #00f3ff; font-size: 1.3rem; font-weight: bold; }
+        
+        /* Wallet Bar */
+        .wallet-bar { position: fixed; top: 0; left: 0; width: 100%; padding: 10px; background: rgba(0,243,255,0.1); border-bottom: 1px solid #00f3ff; text-align: center; font-family: monospace; display: none; z-index: 100; }
+        .wallet-bar.active { display: block; }
+        .wallet-bar.tournament { background: rgba(255,0,255,0.1); border-color: #ff00ff; }
+        
+        /* Controls */
+        .controls { width: 200px; height: 200px; position: relative; margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 5px; }
+        .ctrl-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: all 0.1s; }
+        .ctrl-btn:active { background: rgba(0,243,255,0.3); transform: scale(0.95); }
+        .ctrl-btn:nth-child(2) { grid-column: 2; } /* Up */
+        .ctrl-btn:nth-child(3) { grid-column: 1; grid-row: 2; } /* Left */
+        .ctrl-btn:nth-child(4) { grid-column: 2; grid-row: 2; background: rgba(0,243,255,0.2); } /* Center */
+        .ctrl-btn:nth-child(5) { grid-column: 3; grid-row: 2; } /* Right */
+        .ctrl-btn:nth-child(6) { grid-column: 2; grid-row: 3; } /* Down */
+        
+        /* Results */
+        .result-box { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 30px; text-align: center; width: 100%; max-width: 400px; border: 1px solid rgba(0,243,255,0.3); }
+        .big-score { font-size: 3.5rem; font-weight: 900; background: linear-gradient(135deg, #00f3ff, #ff00ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 10px 0; }
+        .action-btns { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; justify-content: center; }
+        .btn { padding: 12px 30px; border-radius: 25px; border: none; font-weight: bold; cursor: pointer; transition: all 0.3s; font-size: 0.9rem; }
+        .btn.primary { background: linear-gradient(135deg, #00f3ff, #0088ff); color: #000; }
+        .btn.secondary { background: transparent; border: 2px solid #00f3ff; color: #00f3ff; }
+        .btn.purple { background: linear-gradient(135deg, #ff00ff, #aa00ff); color: #fff; border: none; }
+        
+        .stats { text-align: left; margin: 20px 0; font-family: monospace; font-size: 0.9rem; }
+        .stat-row { display: flex; justify-content: space-between; margin: 8px 0; color: #aaa; }
+        
+        /* Loading */
+        .loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.2rem; color: #00f3ff; display: none; }
+    </style>
+</head>
+<body>
+    <div class="wallet-bar" id="walletBar">
+        🔗 <span id="walletAddress">Not Connected</span> | 💰 <span id="walletBalance">0</span> USDC
+    </div>
+
+    <div class="loading" id="loading">Loading Web3...</div>
+
+    <div class="container">
+        <!-- Menu Screen -->
+        <div id="menuScreen" class="screen active">
+            <h1 class="logo neon">FARBASE GRID</h1>
+            <p class="subtitle">Skill-Based Speedrunning • Base Mainnet • Weekly Tournaments</p>
+            
+            <button class="mode-btn" onclick="game.startPractice()">
+                <span class="badge" id="practiceBadge">3/3</span>
+                <div class="mode-title">🎮 Practice Mode</div>
+                <div class="mode-desc">Daily free attempts • Same seed • No rewards</div>
+            </button>
+            
+            <button class="mode-btn tournament" onclick="game.startTournament()">
+                <span class="badge" id="tournamentBadge">3/3</span>
+                <div class="mode-title" style="color: #ff00ff;">🏆 Tournament Mode</div>
+                <div class="mode-desc">1 USDC Entry • Top 5 Win • Daily 3 attempts</div>
+            </button>
+            
+            <button class="mode-btn" onclick="game.showLeaderboard()">
+                <div class="mode-title">📊 Leaderboard</div>
+                <div class="mode-desc">This week's rankings • Live updates</div>
+            </button>
+            
+            <div style="margin-top: 30px; font-size: 0.8rem; color: #666; font-family: monospace;">
+                Seed: <span id="currentSeed" style="color: #00f3ff;">---</span><br>
+                Contract: <span style="font-size: 0.7rem;">0xadbd...30c8</span>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <div class="hud">
+                <div class="hud-box timer" id="timer">00:00.00</div>
+                <div class="hud-box" id="cores">⚡ 0/5</div>
+                <div class="hud-box" id="crashes">💥 0</div>
+            </div>
+            
+            <canvas id="gameCanvas" width="300" height="300"></canvas>
+            
+            <!-- Mobile Controls -->
+            <div class="controls">
+                <div class="ctrl-btn" onclick="game.move(0, -1)">⬆️</div>
+                <div class="ctrl-btn" onclick="game.move(-1, 0)">⬅️</div>
+                <div class="ctrl-btn">•</div>
+                <div class="ctrl-btn" onclick="game.move(1, 0)">➡️</div>
+                <div class="ctrl-btn" onclick="game.move(0, 1)">⬇️</div>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="resultScreen" class="screen">
+            <div class="result-box">
+                <h3 id="resultTitle">Run Complete!</h3>
+                <div class="big-score" id="finalScore">0</div>
+                
+                <div class="stats">
+                    <div class="stat-row"><span>Time:</span><span id="statTime">0s</span></div>
+                    <div class="stat-row"><span>Cores:</span><span id="statCores">0/5</span></div>
+                    <div class="stat-row"><span>Crashes:</span><span id="statCrashes">0</span></div>
+                    <div class="stat-row"><span>Shortcuts:</span><span id="statShortcuts">0</span></div>
+                    <div class="stat-row" style="color: #00f3ff; font-weight: bold; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);"><span>Final Score:</span><span id="statTotal">0</span></div>
+                </div>
+                
+                <div class="action-btns">
+                    <button class="btn primary" onclick="game.shareOnFarcaster()">📤 Share</button>
+                    <button class="btn secondary" onclick="game.replayGhost()">👻 Replay Ghost</button>
+                    <button class="btn purple" onclick="game.backToMenu()">Menu</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leaderboard Screen -->
+        <div id="leaderboardScreen" class="screen">
+            <h2 style="margin-bottom: 20px; color: #00f3ff;">🏆 THIS WEEK</h2>
+            <div id="leaderboardList" style="width: 100%; max-width: 400px; background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;">
+                <!-- Filled by JS -->
+            </div>
+            <button class="btn secondary" style="margin-top: 20px;" onclick="game.backToMenu()">Back</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/viem@2.x/dist/index.umd.min.js"></script>
+    <script>
+        // Web3 Setup (Base Mainnet)
+        const CONTRACT_ADDRESS = '0xadbd1712d5c6e2a4d7e08f50a9586d3c054e30c8';
+        const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+        
+        const CONTRACT_ABI = [
+            { inputs: [{ name: 'score', type: 'uint256' }], name: 'enterTournament', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+            { inputs: [], name: 'togglePause', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+            { inputs: [{ name: 'week', type: 'uint256' }], name: 'distributeWeekly', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+            { inputs: [{ name: 'week', type: 'uint256' }], name: 'weeklyPrizePool', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' }
+        ];
+        
+        const ERC20_ABI = [
+            { inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
+            { inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' }
+        ];
+
+        // Game Engine
+        class FarBaseGrid {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.gridSize = 10;
+                this.cellSize = 30;
+                this.player = { x: 0, y: 0 };
+                this.maze = [];
+                this.cores = [];
+                this.shortcuts = [];
+                this.attempts = { practice: 0, tournament: 0, date: new Date().toDateString() };
+                this.mode = 'practice';
+                this.score = 0;
+                this.crashCount = 0;
+                this.collectedCores = 0;
+                this.usedShortcuts = 0;
+                this.startTime = 0;
+                this.seed = 0;
+                this.inputLog = [];
+                this.wallet = null;
+                this.provider = null;
+                
+                this.init();
+            }
+            
+            async init() {
+                this.loadAttempts();
+                this.generateWeeklySeed();
+                
+                // Check if inside Farcaster Frame
+                if (window.parent !== window) {
+                    try {
+                        await this.connectFarcaster();
+                    } catch(e) {
+                        console.log('Not in Frame or connection failed');
+                    }
+                }
+                
+                // Keyboard controls
+                document.addEventListener('keydown', (e) => {
+                    if (document.getElementById('gameScreen').classList.contains('active')) {
+                        switch(e.key) {
+                            case 'ArrowUp': this.move(0, -1); break;
+                            case 'ArrowDown': this.move(0, 1); break;
+                            case 'ArrowLeft': this.move(-1, 0); break;
+                            case 'ArrowRight': this.move(1, 0); break;
+                        }
+                    }
+                });
+            }
+            
+            async connectFarcaster() {
+                // Mock for now - in real app use @farcaster/frame-sdk
+                this.wallet = { address: '0xFrameUser', type: 'frame' };
+                this.updateWalletBar();
+            }
+            
+            async connectWallet() {
+                if (typeof window.ethereum !== 'undefined') {
+                    try {
+                        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                        this.wallet = { address: accounts[0], type: 'metamask' };
+                        this.provider = window.ethereum;
+                        this.updateWalletBar();
+                        return true;
+                    } catch (e) {
+                        alert('Wallet connection rejected');
+                        return false;
+                    }
+                } else {
+                    alert('Please install MetaMask or use Farcaster app');
+                    return false;
+                }
+            }
+            
+            updateWalletBar() {
+                if (this.wallet) {
+                    const bar = document.getElementById('walletBar');
+                    bar.classList.add('active');
+                    if (this.mode === 'tournament') bar.classList.add('tournament');
+                    document.getElementById('walletAddress').textContent = 
+                        this.wallet.address.slice(0, 6) + '...' + this.wallet.address.slice(-4);
+                }
+            }
+            
+            generateWeeklySeed() {
+                const now = new Date();
+                const day = now.getDay();
+                const diff = now.getDate() - day + 4; // Thursday
+                const thursday = new Date(now.setDate(diff));
+                thursday.setHours(0, 0, 0, 0);
+                this.seed = Math.floor(thursday.getTime() / 1000);
+                document.getElementById('currentSeed').textContent = this.seed.toString().slice(-8);
+            }
+            
+            seededRandom() {
+                const x = Math.sin(this.seed++) * 10000;
+                return x - Math.floor(x);
+            }
+            
+            generateMaze() {
+                // Simple maze generation
+                this.maze = Array(10).fill().map(() => Array(10).fill(1));
+                
+                // Create paths (simplified for demo)
+                for (let i = 0; i < 10; i++) {
+                    for (let j = 0; j < 10; j++) {
+                        if (Math.random() > 0.3) this.maze[i][j] = 0;
+                    }
+                }
+                
+                // Ensure start and end are open
+                this.maze[0][0] = 0;
+                this.maze[9][9] = 0;
+                
+                // Place cores
+                this.cores = [];
+                for (let i = 0; i < 5; i++) {
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * 10);
+                        y = Math.floor(Math.random() * 10);
+                    } while (this.maze[y][x] === 1 || (x === 0 && y === 0));
+                    this.cores.push({ x, y, collected: false });
+                }
+                
+                // Place shortcuts
+                this.shortcuts = [];
+                for (let i = 0; i < 3; i++) {
+                    this.shortcuts.push({
+                        x: Math.floor(Math.random() * 8) + 1,
+                        y: Math.floor(Math.random() * 8) + 1,
+                        used: false
+                    });
+                }
+            }
+            
+            loadAttempts() {
+                const saved = localStorage.getItem('farbase_attempts');
+                const today = new Date().toDateString();
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    if (data.date === today) this.attempts = data;
+                }
+                this.updateBadges();
+            }
+            
+            saveAttempts() {
+                this.attempts.date = new Date().toDateString();
+                localStorage.setItem('farbase_attempts', JSON.stringify(this.attempts));
+                this.updateBadges();
+            }
+            
+            updateBadges() {
+                const pRem = Math.max(0, 3 - this.attempts.practice);
+                const tRem = Math.max(0, 3 - this.attempts.tournament);
+                
+                document.getElementById('practiceBadge').textContent = `${pRem}/3`;
+                document.getElementById('tournamentBadge').textContent = `${tRem}/3`;
+                
+                document.getElementById('practiceBadge').className = pRem === 0 ? 'badge low' : 'badge';
+                document.getElementById('tournamentBadge').className = tRem === 0 ? 'badge low' : 'badge';
+            }
+            
+            async startPractice() {
+                if (this.attempts.practice >= 3) {
+                    alert('Daily practice limit reached! Come back tomorrow.');
+                    return;
+                }
+                this.mode = 'practice';
+                this.attempts.practice++;
+                this.saveAttempts();
+                this.startGame();
+            }
+            
+            async startTournament() {
+                if (this.attempts.tournament >= 3) {
+                    alert('Daily tournament attempts finished!');
+                    return;
+                }
+                
+                if (!this.wallet) {
+                    const connected = await this.connectWallet();
+                    if (!connected) return;
+                }
+                
+                // 1 USDC payment check (mock for demo)
+                const confirmPay = confirm('Entry fee: 1 USDC\nPay and start tournament?');
+                if (!confirmPay) return;
+                
+                // Here you would call the contract:
+                // await this.contract.enterTournament(0);
+                
+                this.mode = 'tournament';
+                this.attempts.tournament++;
+                this.saveAttempts();
+                this.updateWalletBar();
+                this.startGame();
+            }
+            
+            startGame() {
+                this.generateMaze();
+                this.player = { x: 0, y: 0 };
+                this.crashCount = 0;
+                this.collectedCores = 0;
+                this.usedShortcuts = 0;
+                this.inputLog = [];
+                this.showScreen('gameScreen');
+                this.draw();
+                
+                // 3 second countdown
+                let count = 3;
+                const timerEl = document.getElementById('timer');
+                
+                const countInterval = setInterval(() => {
+                    timerEl.textContent = count > 0 ? count : 'GO!';
+                    timerEl.style.color = count > 0 ? '#ff00ff' : '#00f3ff';
+                    timerEl.style.fontSize = count > 0 ? '2rem' : '1.3rem';
+                    count--;
+                    
+                    if (count < -1) {
+                        clearInterval(countInterval);
+                        this.beginRun();
+                    }
+                }, 1000);
+            }
+            
+            beginRun() {
+                this.startTime = Date.now();
+                document.getElementById('timer').style.color = '#00f3ff';
+                
+                this.timerInterval = setInterval(() => {
+                    const elapsed = (Date.now() - this.startTime) / 1000;
+                    document.getElementById('timer').textContent = elapsed.toFixed(2);
+                }, 100);
+            }
+            
+            move(dx, dy) {
+                if (!this.timerInterval) return;
+                
+                const newX = this.player.x + dx;
+                const newY = this.player.y + dy;
+                
+                this.inputLog.push({ t: Date.now() - this.startTime, x: dx, y: dy });
+                
+                if (newX < 0 || newX >= 10 || newY < 0 || newY >= 10 || this.maze[newY][newX] === 1) {
+                    // Check shortcut
+                    const shortcut = this.shortcuts.find(s => s.x === newX && s.y === newY && !s.used);
+                    if (shortcut) {
+                        shortcut.used = true;
+                        this.usedShortcuts++;
+                        this.player.x = newX;
+                        this.player.y = newY;
+                    } else {
+                        this.crashCount++;
+                        document.getElementById('crashes').textContent = `💥 ${this.crashCount}`;
+                        // Shake effect
+                        this.canvas.style.transform = 'translate(5px, 0)';
+                        setTimeout(() => this.canvas.style.transform = 'translate(0, 0)', 100);
+                    }
+                } else {
+                    this.player.x = newX;
+                    this.player.y = newY;
+                    
+                    // Check cores
+                    const core = this.cores.find(c => c.x === newX && c.y === newY && !c.collected);
+                    if (core) {
+                        core.collected = true;
+                        this.collectedCores++;
+                        document.getElementById('cores').textContent = `⚡ ${this.collectedCores}/5`;
+                    }
+                    
+                    // Check win
+                    if (newX === 9 && newY === 9) {
+                        this.finishRun();
+                    }
+                }
+                
+                this.draw();
+            }
+            
+            finishRun() {
+                clearInterval(this.timerInterval);
+                this.timerInterval = null;
+                
+                const time = (Date.now() - this.startTime) / 1000;
+                const baseScore = 100000 / (time * time);
+                const coreMulti = 1 + (this.collectedCores / 5);
+                let crashMulti = 1.0;
+                if (this.crashCount === 0) crashMulti = 1.5;
+                else if (this.crashCount === 1) crashMulti = 1.3;
+                else if (this.crashCount === 2) crashMulti = 1.1;
+                const shortMulti = 1 + (this.usedShortcuts * 0.1);
+                
+                this.score = Math.floor(baseScore * coreMulti * crashMulti * shortMulti);
+                
+                // Save to local leaderboard
+                this.saveScore(this.score, time);
+                
+                this.showResults(time);
+            }
+            
+            saveScore(score, time) {
+                const key = this.mode === 'tournament' ? 'tournament_scores' : 'practice_scores';
+                const scores = JSON.parse(localStorage.getItem(key) || '[]');
+                scores.push({ score, time, date: new Date().toISOString(), address: this.wallet?.address || 'anon' });
+                scores.sort((a, b) => b.score - a.score);
+                localStorage.setItem(key, JSON.stringify(scores.slice(0, 100)));
+            }
+            
+            showResults(time) {
+                document.getElementById('resultTitle').textContent = this.mode === 'tournament' ? '🏆 Tournament Run!' : '🎮 Practice Run';
+                document.getElementById('finalScore').textContent = this.score.toLocaleString();
+                document.getElementById('statTime').textContent = time.toFixed(2) + 's';
+                document.getElementById('statCores').textContent = `${this.collectedCores}/5`;
+                document.getElementById('statCrashes').textContent = this.crashCount;
+                document.getElementById('statShortcuts').textContent = this.usedShortcuts;
+                document.getElementById('statTotal').textContent = this.score.toLocaleString();
+                this.showScreen('resultScreen');
+            }
+            
+            draw() {
+                const ctx = this.ctx;
+                const cs = this.cellSize;
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, 300, 300);
+                
+                // Grid
+                ctx.strokeStyle = '#111';
+                for (let i = 0; i <= 10; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * cs, 0);
+                    ctx.lineTo(i * cs, 300);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * cs);
+                    ctx.lineTo(300, i * cs);
+                    ctx.stroke();
+                }
+                
+                // Maze
+                ctx.fillStyle = '#0a0a2e';
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 10; x++) {
+                        if (this.maze[y][x] === 1) {
+                            ctx.fillRect(x * cs + 1, y * cs + 1, cs - 2, cs - 2);
+                            ctx.strokeStyle = '#00f3ff';
+                            ctx.lineWidth = 0.5;
+                            ctx.strokeRect(x * cs + 1, y * cs + 1, cs - 2, cs - 2);
+                        }
+                    }
+                }
+                
+                // Shortcuts (subtle hint)
+                this.shortcuts.forEach(s => {
+                    if (!s.used) {
+                        ctx.fillStyle = 'rgba(255, 0, 255, 0.3)';
+                        ctx.fillRect(s.x * cs + 8, s.y * cs + 8, cs - 16, cs - 16);
+                    }
+                });
+                
+                // Cores
+                this.cores.forEach(c => {
+                    if (!c.collected) {
+                        ctx.fillStyle = '#ffff00';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#ffff00';
+                        ctx.beginPath();
+                        ctx.arc(c.x * cs + cs/2, c.y * cs + cs/2, 6, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                });
+                
+                // Exit
+                ctx.fillStyle = '#00ff00';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#00ff00';
+                ctx.fillRect(9 * cs + 8, 9 * cs + 8, cs - 16, cs - 16);
+                ctx.shadowBlur = 0;
+                
+                // Player
+                ctx.fillStyle = '#ff00ff';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff00ff';
+                ctx.fillRect(this.player.x * cs + 6, this.player.y * cs + 6, cs - 12, cs - 12);
+                ctx.shadowBlur = 0;
+            }
+            
+            showScreen(id) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
+            }
+            
+            backToMenu() {
+                this.showScreen('menuScreen');
+            }
+            
+            showLeaderboard() {
+                const list = document.getElementById('leaderboardList');
+                const scores = JSON.parse(localStorage.getItem('tournament_scores') || '[]');
+                
+                if (scores.length === 0) {
+                    list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No scores yet this week!</div>';
+                } else {
+                    list.innerHTML = scores.slice(0, 10).map((s, i) => `
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); ${i < 3 ? 'background: rgba(255,215,0,0.1);' : ''}">
+                            <span style="font-weight: bold;">#${i + 1} ${s.address.slice(0, 6)}...</span>
+                            <span style="color: #00f3ff; font-family: monospace;">${s.score.toLocaleString()}</span>
+                        </div>
+                    `).join('');
+                }
+                this.showScreen('leaderboardScreen');
+            }
+            
+            replayGhost() {
+                alert('Ghost replay: ' + this.inputLog.length + ' moves recorded');
+            }
+            
+            shareOnFarcaster() {
+                const text = `I scored ${this.score.toLocaleString()} in FarBase Grid! 🎮🏆 #FarBaseGrid`;
+                if (navigator.share) {
+                    navigator.share({ title: 'FarBase Grid', text: text });
+                } else {
+                    alert('Share: ' + text);
+                }
+            }
+        }
+
+        const game = new FarBaseGrid();
+    </script>
+</body>
+</html>
