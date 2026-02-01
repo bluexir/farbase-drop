@@ -35,7 +35,17 @@ export default function RootLayout({
         <meta name="fc:miniapp" content={JSON.stringify(miniAppEmbed)} />
         <meta name="fc:frame" content={JSON.stringify(miniAppEmbed)} />
       </head>
-      <body className="bg-gray-950 text-white min-h-screen flex items-center justify-center">
+      <body
+        style={{
+          margin: 0,
+          padding: 0,
+          height: "100vh",
+          width: "100vw",
+          overflow: "hidden",
+          background: "#000",
+          color: "#fff",
+        }}
+      >
         {children}
       </body>
     </html>
