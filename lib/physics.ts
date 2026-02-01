@@ -1,7 +1,7 @@
 import Matter from "matter-js";
-import { getCoinByLevel, CoinType } from "./coins";
+import { getCoinByLevel } from "./coins";
 
-const { Engine, World, Bodies, Body, Events } = Matter;
+const { Engine, World, Bodies } = Matter;
 
 export const GAME_WIDTH = 360;
 export const GAME_HEIGHT = 600;
@@ -37,7 +37,6 @@ export function createPhysicsEngine(
   let isGameOver = false;
   let isMerging = false;
 
-  // Duvarlar
   const leftWall = Bodies.rectangle(
     -WALL_THICKNESS / 2,
     GAME_HEIGHT / 2,
@@ -65,7 +64,20 @@ export function createPhysicsEngine(
   World.add(engine.world, [leftWall, rightWall, floor]);
 
   function addCoin(x: number) {
-    const nextLevel = getNextDropLevel();
+    if (isGameOver) return;
+
+    // Game over kontrolü burada: yeni coin düşürmek İSTEDİĞİMIZDA
+    // mevcut coinleri kontrol et. Yeni coin henüz dünyada yok.
+    for (const coin of coins) {
+      const coinData = getCoinByLevel(coin.level);
+      if (!coinData) continue;
+      if (coin.body.position.y - coinData.radius < DANGER_LINE) {
+        isGameOver = true;
+        return;
+      }
+    }
+
+    const nextLevel = 1;
     const coinData = getCoinByLevel(nextLevel);
     if (!coinData) return;
 
@@ -87,11 +99,6 @@ export function createPhysicsEngine(
     coins.push({ body, level: nextLevel });
   }
 
-  function getNextDropLevel(): number {
-    // Şimdilik her zaman level 1 düşürüyor, ileride random yapılabilir
-    return 1;
-  }
-
   function checkMerges() {
     if (isMerging) return;
     isMerging = true;
@@ -99,7 +106,7 @@ export function createPhysicsEngine(
     for (let i = 0; i < coins.length; i++) {
       for (let j = i + 1; j < coins.length; j++) {
         if (coins[i].level !== coins[j].level) continue;
-        if (coins[i].level >= 7) continue; // BTC max level
+        if (coins[i].level >= 7) continue;
 
         const a = coins[i].body;
         const b = coins[j].body;
@@ -110,17 +117,14 @@ export function createPhysicsEngine(
         const coinData = getCoinByLevel(coins[i].level);
         if (!coinData) continue;
 
-        // İki coin birbirine değdiğinde (radius toplamı kadar yakın)
         if (dist <= coinData.radius * 2 + 2) {
           const newLevel = coins[i].level + 1;
           const newCoinData = getCoinByLevel(newLevel);
           if (!newCoinData) continue;
 
-          // Orta noktada yeni coin
           const newX = (a.position.x + b.position.x) / 2;
           const newY = (a.position.y + b.position.y) / 2;
 
-          // Eskileri kaldır
           World.remove(engine.world, a);
           World.remove(engine.world, b);
 
@@ -134,7 +138,6 @@ export function createPhysicsEngine(
             coins.splice(removeJ, 1);
           }
 
-          // Yeni coin ekle
           const newBody = Bodies.circle(newX, newY, newCoinData.radius, {
             restitution: 0.3,
             friction: 0.1,
@@ -154,7 +157,6 @@ export function createPhysicsEngine(
           onMerge(newLevel - 1, newLevel);
 
           isMerging = false;
-          // Chain reaction kontrolü
           checkMerges();
           return;
         }
@@ -164,23 +166,14 @@ export function createPhysicsEngine(
     isMerging = false;
   }
 
-  function checkGameOver() {
-    for (const coin of coins) {
-      if (coin.body.position.y - getCoinByLevel(coin.level)!.radius < DANGER_LINE) {
-        isGameOver = true;
-        return;
-      }
-    }
-  }
-
   function update() {
     Engine.update(engine, 1000 / 60);
     checkMerges();
-    checkGameOver();
+    // checkGameOver burada yok artık, addCoin'de yapılıyor
   }
 
   function destroy() {
-   Engine.clear(engine);
+    Engine.clear(engine);
   }
 
   return {
