@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 interface MainMenuProps {
   fid: number;
@@ -7,20 +7,26 @@ interface MainMenuProps {
   onLeaderboard: () => void;
 }
 
-export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard }: MainMenuProps) {
+export default function MainMenu({
+  fid,
+  onPractice,
+  onTournament,
+  onLeaderboard,
+}: MainMenuProps) {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: "radial-gradient(circle at center, #0a0a1a 0%, #000000 100%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-        color: "#fff",
+        minHeight: '100vh',
+        background: 'radial-gradient(circle at center, #0a0a1a 0%, #000000 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        color: '#fff',
       }}
     >
+
       {/* Logo */}
       <h1
         style={{
