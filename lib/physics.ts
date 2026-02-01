@@ -3,43 +3,39 @@ import { getCoinByLevel } from "./coins";
 
 const { Engine, World, Bodies } = Matter;
 
-// Ekran boyutlarına göre dinamik canvas boyutları
-// Mobil: 360px genişlik, Desktop: 600px
+// Farcaster Mini App resmi spesifikasyon:
+// Web: 424x695px sabit
+// Mobil: cihaz boyutuna göre
 const getGameDimensions = () => {
   if (typeof window === "undefined") {
-    return { width: 360, height: 600 };
+    return { width: 424, height: 695 };
   }
-  
-  // Ekran genişliği 768px altındaysa mobil tasarım
+
   const isMobile = window.innerWidth < 768;
-  
+
   if (isMobile) {
-    // Mobil: Ekranın %95'i kadar genişlik, 500px yükseklik
-    const width = Math.min(window.innerWidth * 0.95, 360);
-    return { 
-      width: width, 
-      height: Math.min(window.innerHeight * 0.6, 500) 
-    };
+    // Mobil: Farcaster cihaz boyutuna göre render eder
+    // Güvenli alan için küçük margin bırakıyoruz
+    const width = Math.min(window.innerWidth * 0.95, 424);
+    const height = Math.min(window.innerHeight * 0.7, 695);
+    return { width, height };
   }
-  
-  // Desktop: Sabit boyut
-  return { width: 400, height: 600 };
+
+  // Web: Farcaster spesifikasyona göre sabit 424x695
+  return { width: 424, height: 695 };
 };
 
-export let GAME_WIDTH = 360;
-export let GAME_HEIGHT = 600;
-export let DANGER_LINE = 30;
+export let GAME_WIDTH = 424;
+export let GAME_HEIGHT = 695;
+export let DANGER_LINE = 35;
 
-// Boyutları güncelleme fonksiyonu
 export const updateDimensions = () => {
   const dims = getGameDimensions();
   GAME_WIDTH = dims.width;
   GAME_HEIGHT = dims.height;
-  // Danger line yüksekliğin %5'i kadar olsun
-  DANGER_LINE = dims.height * 0.05;
+  DANGER_LINE = Math.floor(dims.height * 0.05);
 };
 
-// İlk çalıştırmada boyutları ayarla (client-side)
 if (typeof window !== "undefined") {
   updateDimensions();
 }
@@ -66,9 +62,9 @@ export function createPhysicsEngine(
   onMerge: (fromLevel: number, toLevel: number) => void
 ): PhysicsEngine {
   const engine = Engine.create({
-    gravity: { 
-      x: 0, 
-      y: isMobile() ? 1.2 : 1 // Mobilde biraz daha hızlı düşsün
+    gravity: {
+      x: 0,
+      y: isMobile() ? 1.2 : 1,
     },
   });
 
@@ -83,7 +79,7 @@ export function createPhysicsEngine(
   let isGameOver = false;
   let isMerging = false;
 
-  // Duvarları oluştur (boyutlara göre)
+  // Duvarlar
   const leftWall = Bodies.rectangle(
     -WALL_THICKNESS / 2,
     GAME_HEIGHT / 2,
@@ -110,6 +106,14 @@ export function createPhysicsEngine(
 
   World.add(engine.world, [leftWall, rightWall, floor]);
 
+  // Rastgele level seçimi (1-3 arası)
+  function getRandomStartLevel(): number {
+    const rand = Math.random();
+    if (rand < 0.6) return 1;      // %60 level 1
+    if (rand < 0.9) return 2;      // %30 level 2
+    return 3;                       // %10 level 3
+  }
+
   function addCoin(x: number) {
     if (isGameOver) return;
 
@@ -123,7 +127,7 @@ export function createPhysicsEngine(
       }
     }
 
-    const nextLevel = 1;
+    const nextLevel = getRandomStartLevel();
     const coinData = getCoinByLevel(nextLevel);
     if (!coinData) return;
 
@@ -163,7 +167,7 @@ export function createPhysicsEngine(
         const coinData = getCoinByLevel(coins[i].level);
         if (!coinData) continue;
 
-        if (dist <= coinData.radius * 2 + 5) { // Biraz daha hassas (+5 yerine +2 olabilir)
+        if (dist <= coinData.radius * 2 + 5) {
           const newLevel = coins[i].level + 1;
           const newCoinData = getCoinByLevel(newLevel);
           if (!newCoinData) continue;
