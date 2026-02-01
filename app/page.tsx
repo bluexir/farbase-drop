@@ -6,20 +6,4 @@ export default function Home() {
     </div>
   );
 }
-```
 
----
-
-**9. `.gitignore`**
-```
-node_modules/
-.next/
-.env.local
-```
-
----
-
-**10. `.env.example`**
-```
-ADMIN_FID=429973
-NEXT_PUBLIC_APP_URL=https://farbase-drop.vercel.app
