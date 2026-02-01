@@ -190,9 +190,6 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
         </div>
       </div>
 
-     // ... (üst kısım aynı kalıyor, sadece footer kısmı değişiyor)
-
-      {/* Footer */}
       <div style={{ marginTop: "40px", textAlign: "center" }}>
         <p style={{ fontFamily: "monospace", color: "#00f3ff", fontSize: "0.7rem", marginBottom: "4px" }}>
           Seed: 12345678
