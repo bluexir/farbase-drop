@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 interface MainMenuProps {
   fid: number;
   onPractice: () => void;
@@ -8,6 +10,36 @@ interface MainMenuProps {
 }
 
 export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard }: MainMenuProps) {
+  const [prizePool, setPrizePool] = useState<string>("0");
+  const [recommendedApps, setRecommendedApps] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Prize Pool çek
+    async function fetchPrizePool() {
+      try {
+        const res = await fetch("/api/prize-pool");
+        const data = await res.json();
+        setPrizePool(data.amount || "0");
+      } catch (e) {
+        console.error("Failed to fetch prize pool:", e);
+      }
+    }
+
+    // Önerilen uygulamalar çek
+    async function fetchRecommendedApps() {
+      try {
+        const res = await fetch("/recommended-apps.json");
+        const data = await res.json();
+        setRecommendedApps(data.apps || []);
+      } catch (e) {
+        console.error("Failed to fetch recommended apps:", e);
+      }
+    }
+
+    fetchPrizePool();
+    fetchRecommendedApps();
+  }, []);
+
   return (
     <div
       style={{
@@ -55,6 +87,7 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
           gap: '16px',
         }}
       >
+        {/* Practice */}
         <div
           onClick={onPractice}
           style={{
@@ -100,6 +133,7 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
           <p style={{ color: '#666', fontSize: '0.75rem', margin: 0 }}>Daily free attempts • Same seed • No rewards</p>
         </div>
 
+        {/* Tournament */}
         <div
           onClick={onTournament}
           style={{
@@ -145,6 +179,7 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
           <p style={{ color: '#666', fontSize: '0.75rem', margin: 0 }}>1 USDC Entry • Top 5 Win • Daily 3 attempts</p>
         </div>
 
+        {/* Leaderboard */}
         <div
           onClick={onLeaderboard}
           style={{
@@ -170,15 +205,79 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
           </div>
           <p style={{ color: '#666', fontSize: '0.75rem', margin: 0 }}>This week&apos;s rankings • Live updates</p>
         </div>
-      </div>
 
-      <div style={{ marginTop: '40px', textAlign: 'center' }}>
-        <p style={{ fontFamily: 'monospace', color: '#00f3ff', fontSize: '0.7rem', marginBottom: '4px' }}>
-          Seed: 12345678
-        </p>
-        <p style={{ fontFamily: 'monospace', color: '#444', fontSize: '0.65rem', margin: 0 }}>
-          Contract: 0xadbd...30c8 • by @bluexir 
-        </p>
+        {/* Prize Pool */}
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid #eab308',
+            borderRadius: '16px',
+            padding: '20px',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ marginBottom: '8px' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 'bold', color: '#eab308' }}>💰 Prize Pool</span>
+          </div>
+          <p style={{ color: '#fff', fontSize: '1.5rem', fontWeight: 'bold', margin: '8px 0' }}>
+            ${prizePool} USDC
+          </p>
+          <p style={{ color: '#666', fontSize: '0.7rem', margin: 0 }}>Weekly distribution • Top 5 winners</p>
+        </div>
+
+        {/* Önerilen Uygulamalar */}
+        {recommendedApps.length > 0 && (
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid #7c3aed',
+              borderRadius: '16px',
+              padding: '20px',
+            }}
+          >
+            <div style={{ marginBottom: '12px' }}>
+              <span style={{ fontSize: '1rem', fontWeight: 'bold', color: '#7c3aed' }}>✨ Recommended Apps</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {recommendedApps.map((app, index) => (
+                
+                  key={index}
+                  href={app.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    background: 'rgba(255,255,255,0.05)',
+                    borderRadius: '10px',
+                    padding: '10px',
+                    textDecoration: 'none',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>{app.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 'bold', margin: 0 }}>
+                      {app.name}
+                    </p>
+                    <p style={{ color: '#666', fontSize: '0.7rem', margin: 0 }}>
+                      {app.description}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
