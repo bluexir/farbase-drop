@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-interface MainMenuProps
-{
+interface MainMenuProps {
   fid: number;
   onPractice: () => void;
   onTournament: () => void;
@@ -15,7 +14,6 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
   const [recommendedApps, setRecommendedApps] = useState<any[]>([]);
 
   useEffect(() => {
-    // Prize Pool çek
     async function fetchPrizePool() {
       try {
         const res = await fetch("/api/prize-pool");
@@ -26,7 +24,6 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
       }
     }
 
-    // Önerilen uygulamalar çek
     async function fetchRecommendedApps() {
       try {
         const res = await fetch("/recommended-apps.json");
@@ -243,7 +240,7 @@ export default function MainMenu({ fid, onPractice, onTournament, onLeaderboard 
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {recommendedApps.map((app, index) => (
-                
+                <a
                   key={index}
                   href={app.url}
                   target="_blank"
