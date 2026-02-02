@@ -156,7 +156,7 @@ export function createPhysicsEngine(
     for (let i = 0; i < coins.length; i++) {
       for (let j = i + 1; j < coins.length; j++) {
         if (coins[i].level !== coins[j].level) continue;
-        if (coins[i].level >= 7) continue;
+        if (coins[i].level >= 8) continue;
 
         const a = coins[i].body;
         const b = coins[j].body;
