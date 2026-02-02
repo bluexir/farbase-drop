@@ -1,0 +1,8 @@
+{
+  "cron": [
+    {
+      "path": "/api/cron/distribute-prizes",
+      "schedule": "0 14 * * 2"
+    }
+  ]
+}
