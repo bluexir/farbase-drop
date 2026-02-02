@@ -63,14 +63,13 @@ export async function GET(request: Request) {
       top5[1]?.address || ethers.ZeroAddress,
       top5[2]?.address || ethers.ZeroAddress,
       top5[3]?.address || ethers.ZeroAddress,
-      top5[4]?.address || ends.ZeroAddress,
+      top5[4]?.address || ethers.ZeroAddress, // HATA BURADAYDI: ends -> ethers yapıldı
     ];
 
     const weekNumber = getWeekNumber();
     const isFourthWeek = weekNumber % 4 === 0;
 
     // 4. hafta — havuza kalan %10'ları da dağıt
-    // Kontrat tarafından zaten yönetilir, burada sadece log
     const tx = await contract.distributePrizes(winners);
     const receipt = await tx.wait();
 
