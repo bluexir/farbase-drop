@@ -17,12 +17,11 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
   const dropXRef = useRef<number>(GAME_WIDTH / 2);
   const isDraggingRef = useRef<boolean>(false);
   const gameOverCalledRef = useRef<boolean>(false);
-  const nextLevelRef = useRef<number>(1); // Sonraki coin preview için
+  const nextLevelRef = useRef<number>(1); 
 
   const coinImagesRef = useRef<Map<number, HTMLImageElement>>(new Map());
   const [imagesLoaded, setImagesLoaded] = useState(false);
 
-  // Sonraki coin'i önceden belirleme (preview için)
   const pickNextLevel = useCallback(() => {
     const rand = Math.random();
     if (rand < 0.6) return 1;
@@ -30,10 +29,10 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     return 3;
   }, []);
 
-  // Coin görsellerini yükle
   useEffect(() => {
     const loadImages = async () => {
-      const levels = [1, 2, 3, 4, 5, 6, 7];
+      // Toplam seviye sayısına göre dizi (1'den 11'e kadar tüm coinler)
+      const levels = Array.from({ length: 11 }, (_, i) => i + 1);
       const loadPromises = levels.map((level) => {
         const coinData = getCoinByLevel(level);
         if (!coinData) return Promise.resolve();
@@ -66,58 +65,55 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     const img = coinImagesRef.current.get(level);
     const radius = coinData.radius;
 
+    ctx.save();
+    
+    // Glow efekti (Daima çizilir)
+    ctx.shadowColor = coinData.glowColor;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = coinData.color; // Logo yüklenene kadar arka plan rengi
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
     if (img && img.complete) {
+      // Logoyu yuvarlak keserek çiz
       ctx.save();
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.closePath();
       ctx.clip();
-
-      const size = radius * 2;
-      ctx.drawImage(img, x - radius, y - radius, size, size);
+      ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
       ctx.restore();
+    }
 
-      // Glow
-      ctx.shadowColor = coinData.glowColor;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = coinData.glowColor;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    } else {
-      // Fallback
-      ctx.shadowColor = coinData.glowColor;
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = coinData.color;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255,255,255,0.3)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
+    // Sponsor ise üzerine yazı ekle, değilse boş bırak (Sadece logo kalsın)
+    if (coinData.isSponsor) {
       ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.max(10, radius * 0.55)}px sans-serif`;
+      ctx.font = `bold ${Math.max(8, radius * 0.35)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(coinData.symbol, x, y);
+      // Sponsor yazısının altına hafif siyah bir gölge atalım ki her logoda okunsun
+      ctx.shadowColor = "black";
+      ctx.shadowBlur = 4;
+      ctx.fillText("SPONSOR", x, y);
     }
+
+    // İnce dış çerçeve
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
   }, [imagesLoaded]);
 
-  // Preview — sonraki coin gösterir
   const drawPreview = useCallback((ctx: CanvasRenderingContext2D) => {
     const coinData = getCoinByLevel(nextLevelRef.current);
     if (!coinData) return;
 
     const x = Math.max(coinData.radius, Math.min(GAME_WIDTH - coinData.radius, dropXRef.current));
 
-    // Dashed guide line
     ctx.beginPath();
     ctx.setLineDash([5, 5]);
     ctx.strokeStyle = "rgba(255,255,255,0.15)";
@@ -127,7 +123,6 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Preview coin (yarı şeffaf)
     ctx.globalAlpha = 0.5;
     drawCoin(ctx, x, coinData.radius, nextLevelRef.current);
     ctx.globalAlpha = 1;
@@ -149,14 +144,10 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
       return;
     }
 
-    // Clear
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
-    // Background
-    ctx.fillStyle = "#111827";
+    ctx.fillStyle = "#0a0a0f"; // Daha koyu, derin bir arka plan
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // Danger line
     ctx.beginPath();
     ctx.strokeStyle = "rgba(239,68,68,0.4)";
     ctx.lineWidth = 2;
@@ -166,12 +157,10 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Preview
     if (!engine.isGameOver) {
       drawPreview(ctx);
     }
 
-    // Coins
     for (const coin of engine.coins) {
       drawCoin(ctx, coin.body.position.x, coin.body.position.y, coin.level);
     }
@@ -179,7 +168,6 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     animFrameRef.current = requestAnimationFrame(gameLoop);
   }, [drawCoin, drawPreview, onGameOver]);
 
-  // Touch & mouse handlers
   const getX = useCallback((e: React.TouchEvent | React.MouseEvent): number => {
     const canvas = canvasRef.current;
     if (!canvas) return GAME_WIDTH / 2;
@@ -197,30 +185,28 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
 
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!gameStarted || engineRef.current?.isGameOver) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     isDraggingRef.current = true;
     dropXRef.current = getX(e);
   }, [gameStarted, getX]);
 
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDraggingRef.current) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     dropXRef.current = getX(e);
-  }, []);
+  }, [getX]);
 
   const handleEnd = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDraggingRef.current) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     isDraggingRef.current = false;
 
     if (engineRef.current && !engineRef.current.isGameOver) {
       engineRef.current.addCoin(dropXRef.current);
-      // Coin düştükten sonra sonraki preview güncelle
       nextLevelRef.current = pickNextLevel();
     }
   }, [pickNextLevel]);
 
-  // Keyboard handlers
   useEffect(() => {
     if (!gameStarted) return;
 
@@ -246,7 +232,6 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [gameStarted, pickNextLevel]);
 
-  // Engine init & loop
   useEffect(() => {
     if (!gameStarted) return;
 
@@ -273,6 +258,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
         height: "auto",
         display: "block",
         margin: "0 auto",
+        touchAction: "none" // Mobil kaydırmayı engeller, oyun performansını artırır
       }}
       onTouchStart={handleStart}
       onTouchMove={handleMove}
