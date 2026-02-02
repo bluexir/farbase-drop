@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
-interface MainMenuProps {
+interface MainMenuProps
+{
   fid: number;
   onPractice: () => void;
   onTournament: () => void;
