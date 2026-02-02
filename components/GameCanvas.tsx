@@ -31,20 +31,20 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
 
   useEffect(() => {
     const loadImages = async () => {
-      // Toplam seviye sayısına göre dizi (1'den 11'e kadar tüm coinler)
-      const levels = Array.from({ length: 11 }, (_, i) => i + 1);
+      const levels = Array.from({ length: 7 }, (_, i) => i + 1);
       const loadPromises = levels.map((level) => {
         const coinData = getCoinByLevel(level);
-        if (!coinData) return Promise.resolve();
+        if (!coinData || !coinData.iconUrl) return Promise.resolve();
 
         return new Promise<void>((resolve) => {
           const img = new Image();
           img.onload = () => {
             coinImagesRef.current.set(level, img);
+            setImagesLoaded(prev => !prev); // Force re-render on each load
             resolve();
           };
           img.onerror = () => {
-            console.warn(`Failed to load image for level ${level}`);
+            console.warn(`Failed to load image: ${coinData.iconUrl}`);
             resolve();
           };
           img.src = coinData.iconUrl;
@@ -67,38 +67,33 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
 
     ctx.save();
     
-    // Glow efekti (Daima çizilir)
+    // Background and Glow
     ctx.shadowColor = coinData.glowColor;
     ctx.shadowBlur = 10;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = coinData.color; // Logo yüklenene kadar arka plan rengi
+    ctx.fillStyle = coinData.color;
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    if (img && img.complete) {
-      // Logoyu yuvarlak keserek çiz
+    // Logo check: Draw image if exists and not a sponsor
+    if (img && img.complete && !coinData.isSponsor) {
       ctx.save();
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.clip();
       ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
       ctx.restore();
-    }
-
-    // Sponsor ise üzerine yazı ekle, değilse boş bırak (Sadece logo kalsın)
-    if (coinData.isSponsor) {
+    } else {
+      // Fallback to text for sponsors or missing images
       ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.max(8, radius * 0.35)}px sans-serif`;
+      const fontSize = coinData.isSponsor ? radius * 0.35 : radius * 0.55;
+      ctx.font = `bold ${Math.max(8, fontSize)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      // Sponsor yazısının altına hafif siyah bir gölge atalım ki her logoda okunsun
-      ctx.shadowColor = "black";
-      ctx.shadowBlur = 4;
-      ctx.fillText("SPONSOR", x, y);
+      ctx.fillText(coinData.symbol, x, y);
     }
 
-    // İnce dış çerçeve
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(255,255,255,0.2)";
@@ -145,7 +140,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     }
 
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    ctx.fillStyle = "#0a0a0f"; // Daha koyu, derin bir arka plan
+    ctx.fillStyle = "#0a0a0f"; 
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     ctx.beginPath();
@@ -258,7 +253,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
         height: "auto",
         display: "block",
         margin: "0 auto",
-        touchAction: "none" // Mobil kaydırmayı engeller, oyun performansını artırır
+        touchAction: "none"
       }}
       onTouchStart={handleStart}
       onTouchMove={handleMove}
