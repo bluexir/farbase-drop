@@ -197,7 +197,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     isDraggingRef.current = false;
 
     if (engineRef.current && !engineRef.current.isGameOver) {
-      engineRef.current.addCoin(dropXRef.current, nextLevelRef.current);
+      engineRef.current.addCoin(dropXRef.current);
       nextLevelRef.current = pickNextLevel();
     }
   }, [pickNextLevel]);
@@ -217,7 +217,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
         if (engineRef.current) {
-          engineRef.current.addCoin(dropXRef.current, nextLevelRef.current);
+          engineRef.current.addCoin(dropXRef.current);
           nextLevelRef.current = pickNextLevel();
         }
       }
