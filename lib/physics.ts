@@ -53,7 +53,7 @@ export interface PhysicsEngine {
   mergeCount: number;
   highestLevel: number;
   isGameOver: boolean;
-  addCoin: (x: number) => void;
+  addCoin: (x: number, level?: number) => void;
   update: () => void;
   destroy: () => void;
 }
@@ -114,7 +114,7 @@ export function createPhysicsEngine(
     return 3;                       // %10 level 3
   }
 
-  function addCoin(x: number) {
+  function addCoin(x: number, level?: number) {
     if (isGameOver) return;
 
     // Game over kontrolü
@@ -127,7 +127,7 @@ export function createPhysicsEngine(
       }
     }
 
-    const nextLevel = getRandomStartLevel();
+    const nextLevel = level ?? getRandomStartLevel();
     const coinData = getCoinByLevel(nextLevel);
     if (!coinData) return;
 
