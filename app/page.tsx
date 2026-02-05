@@ -80,15 +80,15 @@ export default function Home() {
     }
   }, [fid, address, currentMode]);
 
-  // Cast Paylaşımı (İngilizce olarak güncellendi)
   const handleCast = useCallback(async () => {
     try {
       const coinData = getCoinByLevel(highestLevel);
-      const text = `🪙 I just scored ${score} points on FarBase Drop! My highest coin reached: ${coinData?.symbol || "DOGE"} 🔥\n\nPlay now: https://farbase-drop.vercel.app`;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://farbase-drop.vercel.app";
+      const text = `🪙 I just scored ${score} points on FarBase Drop! My highest coin reached: ${coinData?.symbol || "DOGE"} 🔥\n\nPlay now: ${appUrl}`;
       
       await sdk.actions.composeCast({
         text,
-        embeds: ["https://farbase-drop.vercel.app"],
+        embeds: [appUrl],
       });
     } catch (e) {
       console.error("Cast error:", e);
@@ -127,35 +127,72 @@ export default function Home() {
           params: [{ chainId: "0x2105" }], 
         });
 
-        const USDC_ADDRESS = "0x833589fCD6e678d9Ab702236158911Df7a60662E";
+        const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
         const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS!;
 
-        const approveData = "0x095ea7b3" + 
-          CONTRACT_ADDRESS.slice(2).padStart(64, "0") +
-          (1000000).toString(16).padStart(64, "0"); 
+        const waitForTransaction = async (txHash: string) => {
+          let confirmed = false;
+          let attempts = 0;
+          while (!confirmed && attempts < 30) {
+            try {
+              const receipt = await provider.request({
+                method: "eth_getTransactionReceipt",
+                params: [txHash],
+              }) as any;
+              
+              if (receipt && receipt.status === "0x1") {
+                confirmed = true;
+              } else if (receipt && receipt.status === "0x0") {
+                throw new Error("Transaction failed");
+              } else {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                attempts++;
+              }
+            } catch (e) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              attempts++;
+            }
+          }
+          if (!confirmed) throw new Error("Transaction confirmation timeout");
+        };
 
-        await provider.request({
+        const { ethers } = await import("ethers");
+        const usdcInterface = new ethers.Interface([
+          "function approve(address spender, uint256 amount)"
+        ]);
+        const approveData = usdcInterface.encodeFunctionData("approve", [CONTRACT_ADDRESS, 1000000]);
+
+        const approveTxHash = await provider.request({
           method: "eth_sendTransaction",
           params: [{
             from: currentAddress,
             to: USDC_ADDRESS,
             data: approveData,
           }],
-        });
+        }) as string;
 
-        const enterData = "0x" + "a93f7e"; 
+        await waitForTransaction(approveTxHash);
 
-        await provider.request({
+        const contractInterface = new ethers.Interface([
+          "function enterTournament(address token)"
+        ]);
+        const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
+
+        const entryTxHash = await provider.request({
           method: "eth_sendTransaction",
           params: [{
             from: currentAddress,
             to: CONTRACT_ADDRESS,
             data: enterData,
           }],
-        });
-      } catch (e) {
+        }) as string;
+
+        await waitForTransaction(entryTxHash);
+
+      } catch (e: any) {
         console.error("Tournament entry failed:", e);
-        alert("Transaction failed");
+        const errorMessage = e?.message || "Transaction failed";
+        alert(`Tournament entry failed: ${errorMessage}`);
         return;
       }
     }
