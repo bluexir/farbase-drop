@@ -1,10 +1,3 @@
-import { Redis } from "@upstash/redis"; // Düzeltildi: Default import yerine { Redis } kullanıldı
-
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-});
-
 export interface LeaderboardEntry {
   fid: number;
   address: string;
@@ -14,7 +7,6 @@ export interface LeaderboardEntry {
   playedAt: number;
 }
 
-// Hafta sayısı hesaplama
 const REFERENCE_WEEK_START = new Date("2025-02-04T14:00:00Z").getTime();
 
 export function getWeekNumber(): number {
@@ -24,7 +16,13 @@ export function getWeekNumber(): number {
   return diffWeeks + 1;
 }
 
-// Score kaydet — sadece daha yüksek score kaydedilir
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
+
 export async function saveScore(
   mode: "practice" | "tournament",
   entry: LeaderboardEntry
@@ -40,7 +38,6 @@ export async function saveScore(
   await redis.set(key, entry);
 }
 
-// Bu hafta Top 5
 export async function getTop5(
   mode: "practice" | "tournament"
 ): Promise<LeaderboardEntry[]> {
@@ -60,15 +57,13 @@ export async function getTop5(
   return entries.slice(0, 5);
 }
 
-// Cron için — Tournament Top 5
 export async function getTop5Tournament(): Promise<LeaderboardEntry[]> {
   return getTop5("tournament");
 }
 
-// Belirli oyuncunun bu hafta en yüksek scorunu al
 export async function getPlayerBestScore(
-  fid: number,
-  mode: "practice" | "tournament"
+  mode: "practice" | "tournament",
+  fid: number
 ): Promise<LeaderboardEntry | null> {
   const weekNumber = getWeekNumber();
   const key = `${mode}:week:${weekNumber}:${fid}`;
