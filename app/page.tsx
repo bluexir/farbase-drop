@@ -8,6 +8,7 @@ import GameOver from "@/components/GameOver";
 import MainMenu from "@/components/MainMenu";
 import Leaderboard from "@/components/Leaderboard";
 import { getCoinByLevel } from "@/lib/coins";
+import { GameLog } from "@/lib/game-log";
 
 type Screen = "menu" | "practice" | "tournament" | "leaderboard";
 
@@ -52,7 +53,7 @@ export default function Home() {
     setHighestLevel((prev) => Math.max(prev, toLevel));
   }, []);
 
-  const handleGameOver = useCallback(async (finalMerges: number, finalHighest: number) => {
+  const handleGameOver = useCallback(async (finalMerges: number, finalHighest: number, gameLog: GameLog) => {
     setGameOver(true);
     const coinData = getCoinByLevel(finalHighest);
     const finalScore = (coinData?.scoreValue || 1) * finalMerges;
@@ -72,11 +73,14 @@ export default function Home() {
           mergeCount: finalMerges,
           highestLevel: finalHighest,
           mode: currentMode,
+          gameLog,
+          sessionId: `${fid}-${Date.now()}`
         }),
       });
       setScoreSaved(true);
     } catch (e) {
       console.error("Failed to save score:", e);
+      alert("Score could not be saved. Please try again.");
     }
   }, [fid, address, currentMode]);
 
@@ -189,10 +193,28 @@ export default function Home() {
 
         await waitForTransaction(entryTxHash);
 
+        await fetch("/api/create-entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fid, address: currentAddress, mode: "tournament" }),
+        });
+
       } catch (e: any) {
         console.error("Tournament entry failed:", e);
         const errorMessage = e?.message || "Transaction failed";
         alert(`Tournament entry failed: ${errorMessage}`);
+        return;
+      }
+    } else {
+      try {
+        await fetch("/api/create-entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fid, address, mode: "practice" }),
+        });
+      } catch (e) {
+        console.error("Practice entry failed:", e);
+        alert("Failed to start practice mode");
         return;
       }
     }
@@ -204,7 +226,7 @@ export default function Home() {
     setCurrentMode(mode);
     setScreen(mode);
     setGameKey((prev) => prev + 1);
-  }, [address]);
+  }, [address, fid]);
 
   const restartGame = useCallback(() => {
     setGameOver(false);
@@ -317,6 +339,9 @@ export default function Home() {
           onMerge={handleMerge}
           onGameOver={handleGameOver}
           gameStarted={true}
+          fid={fid!}
+          mode={currentMode}
+          sessionId={`${fid}-${Date.now()}`}
         />
 
         {gameOver && (
