@@ -3,13 +3,13 @@ import "./globals.css";
 
 const miniAppEmbed = {
   version: "1",
-  imageUrl: "https://farbase-drop-dkod.vercel.app/og.png",
+  imageUrl: "https://farbase-drop.vercel.app/og.png",
   button: {
     title: "🪙 FarBase Drop",
     action: {
       type: "launch_frame",
       name: "FarBase Drop",
-      url: "https://farbase-drop-dkod.vercel.app",
+      url: "https://farbase-drop.vercel.app",
       splashBackgroundColor: "#0a0a1a",
     },
   },
