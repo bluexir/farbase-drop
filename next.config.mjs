@@ -1,31 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // TypeScript hatalarını göster - güvenlik için kritik
-  typescript: {
-    ignoreBuildErrors: false,
-  },
-  // ESLint hatalarını göster - kod kalitesi için
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
-  // Güvenlik başlıkları
+  typescript: { ignoreBuildErrors: false },
+  eslint: { ignoreDuringBuilds: false },
+
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: "/:path*",
         headers: [
           {
-            key: 'X-Frame-Options',
-            value: 'DENY',
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self' https://warpcast.com https://client.warpcast.com https://*.warpcast.com https://farcaster.xyz https://client.farcaster.xyz https://*.farcaster.xyz;",
           },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
     ];
