@@ -1,26 +1,46 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { createPhysicsEngine, GAME_WIDTH, GAME_HEIGHT, DANGER_LINE, PhysicsEngine } from "@/lib/physics";
+import { createPhysicsEngine, GAME_WIDTH, GAME_HEIGHT, DANGER_LINE, PhysicsEngine, GameCoin } from "@/lib/physics";
 import { getCoinByLevel } from "@/lib/coins";
+import { GameEvent, GameLog } from "@/lib/game-log";
 
 interface GameCanvasProps {
   onMerge: (fromLevel: number, toLevel: number) => void;
-  onGameOver: (mergeCount: number, highestLevel: number) => void;
+  onGameOver: (mergeCount: number, highestLevel: number, gameLog: GameLog) => void;
   gameStarted: boolean;
+  fid: number;
+  mode: "practice" | "tournament";
+  sessionId: string;
 }
 
-export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCanvasProps) {
+export default function GameCanvas({ 
+  onMerge, 
+  onGameOver, 
+  gameStarted,
+  fid,
+  mode,
+  sessionId
+}: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<PhysicsEngine | null>(null);
   const animFrameRef = useRef<number>(0);
-  const dropXRef = useRef<number>(GAME_WIDTH / 2);
-  const isDraggingRef = useRef<boolean>(false);
-  const gameOverCalledRef = useRef<boolean>(false);
-  const nextLevelRef = useRef<number>(1); 
+  const dropXRef = useRef(GAME_WIDTH / 2);
+  const isDraggingRef = useRef(false);
+  const gameOverCalledRef = useRef(false);
+  const nextLevelRef = useRef(1);
+  const gameLogRef = useRef<GameLog>({
+    sessionId,
+    fid,
+    mode,
+    startTime: Date.now(),
+    events: []
+  });
 
   const coinImagesRef = useRef<Map<number, HTMLImageElement>>(new Map());
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [mergeCount, setMergeCount] = useState(0);
+  const [highestLevel, setHighestLevel] = useState(1);
 
   const pickNextLevel = useCallback(() => {
     const rand = Math.random();
@@ -40,7 +60,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
           const img = new Image();
           img.onload = () => {
             coinImagesRef.current.set(level, img);
-            setImagesLoaded(prev => !prev); // Force re-render on each load
+            setImagesLoaded(prev => !prev);
             resolve();
           };
           img.onerror = () => {
@@ -58,6 +78,15 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     loadImages();
   }, []);
 
+  const addEvent = useCallback((type: GameEvent['type'], data: GameEvent['data']) => {
+    const event: GameEvent = {
+      type,
+      timestamp: Date.now(),
+      data
+    };
+    gameLogRef.current.events.push(event);
+  }, []);
+
   const drawCoin = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, level: number) => {
     const coinData = getCoinByLevel(level);
     if (!coinData) return;
@@ -66,8 +95,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     const radius = coinData.radius;
 
     ctx.save();
-    
-    // Background and Glow
+
     ctx.shadowColor = coinData.glowColor;
     ctx.shadowBlur = 10;
     ctx.beginPath();
@@ -76,7 +104,6 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Logo check: Draw image if exists and not a sponsor
     if (img && img.complete && !coinData.isSponsor) {
       ctx.save();
       ctx.beginPath();
@@ -85,7 +112,6 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
       ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
       ctx.restore();
     } else {
-      // Fallback to text for sponsors or missing images
       ctx.fillStyle = "#fff";
       const fontSize = coinData.isSponsor ? radius * 0.35 : radius * 0.55;
       ctx.font = `bold ${Math.max(8, fontSize)}px sans-serif`;
@@ -123,6 +149,13 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     ctx.globalAlpha = 1;
   }, [drawCoin]);
 
+  const handleMergeInternal = useCallback((fromLevel: number, toLevel: number) => {
+    addEvent('MERGE', { fromLevel, toLevel });
+    setMergeCount((prev) => prev + 1);
+    setHighestLevel((prev) => Math.max(prev, toLevel));
+    onMerge(fromLevel, toLevel);
+  }, [onMerge, addEvent]);
+
   const gameLoop = useCallback(() => {
     const canvas = canvasRef.current;
     const engine = engineRef.current;
@@ -135,12 +168,16 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
 
     if (engine.isGameOver && !gameOverCalledRef.current) {
       gameOverCalledRef.current = true;
-      onGameOver(engine.mergeCount, engine.highestLevel);
+      gameLogRef.current.endTime = Date.now();
+      gameLogRef.current.finalScore = (getCoinByLevel(highestLevel)?.scoreValue || 1) * mergeCount;
+      gameLogRef.current.mergeCount = mergeCount;
+      gameLogRef.current.highestLevel = highestLevel;
+      onGameOver(mergeCount, highestLevel, gameLogRef.current);
       return;
     }
 
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    ctx.fillStyle = "#0a0a0f"; 
+    ctx.fillStyle = "#0a0a0f";
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     ctx.beginPath();
@@ -161,7 +198,7 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     }
 
     animFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [drawCoin, drawPreview, onGameOver]);
+  }, [drawCoin, drawPreview, onGameOver, mergeCount, highestLevel]);
 
   const getX = useCallback((e: React.TouchEvent | React.MouseEvent): number => {
     const canvas = canvasRef.current;
@@ -197,10 +234,13 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
     isDraggingRef.current = false;
 
     if (engineRef.current && !engineRef.current.isGameOver) {
-      engineRef.current.addCoin(dropXRef.current, nextLevelRef.current);
+      const x = dropXRef.current;
+      const level = nextLevelRef.current;
+      addEvent('DROP', { x, level });
+      engineRef.current.addCoin(x, level);
       nextLevelRef.current = pickNextLevel();
     }
-  }, [pickNextLevel]);
+  }, [pickNextLevel, addEvent]);
 
   useEffect(() => {
     if (!gameStarted) return;
@@ -217,7 +257,10 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
         if (engineRef.current) {
-          engineRef.current.addCoin(dropXRef.current, nextLevelRef.current);
+          const x = dropXRef.current;
+          const level = nextLevelRef.current;
+          addEvent('DROP', { x, level });
+          engineRef.current.addCoin(x, level);
           nextLevelRef.current = pickNextLevel();
         }
       }
@@ -225,14 +268,25 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [gameStarted, pickNextLevel]);
+  }, [gameStarted, pickNextLevel, addEvent]);
 
   useEffect(() => {
     if (!gameStarted) return;
 
     gameOverCalledRef.current = false;
     nextLevelRef.current = pickNextLevel();
-    engineRef.current = createPhysicsEngine(onMerge);
+    setMergeCount(0);
+    setHighestLevel(1);
+    
+    gameLogRef.current = {
+      sessionId,
+      fid,
+      mode,
+      startTime: Date.now(),
+      events: []
+    };
+    
+    engineRef.current = createPhysicsEngine(handleMergeInternal);
     animFrameRef.current = requestAnimationFrame(gameLoop);
 
     return () => {
@@ -240,27 +294,27 @@ export default function GameCanvas({ onMerge, onGameOver, gameStarted }: GameCan
       engineRef.current?.destroy();
       engineRef.current = null;
     };
-  }, [gameStarted, onMerge, gameLoop, pickNextLevel]);
+  }, [gameStarted, gameLoop, pickNextLevel, handleMergeInternal, fid, mode, sessionId]);
 
   return (
     <canvas
       ref={canvasRef}
       width={GAME_WIDTH}
       height={GAME_HEIGHT}
-      className="rounded-xl border border-gray-800 cursor-pointer"
-      style={{
-        maxWidth: "100%",
-        height: "auto",
-        display: "block",
-        margin: "0 auto",
-        touchAction: "none"
-      }}
-      onTouchStart={handleStart}
-      onTouchMove={handleMove}
-      onTouchEnd={handleEnd}
       onMouseDown={handleStart}
       onMouseMove={handleMove}
       onMouseUp={handleEnd}
+      onMouseLeave={handleEnd}
+      onTouchStart={handleStart}
+      onTouchMove={handleMove}
+      onTouchEnd={handleEnd}
+      style={{
+        width: "100%",
+        height: "auto",
+        maxWidth: GAME_WIDTH,
+        touchAction: "none",
+        cursor: "crosshair",
+      }}
     />
   );
 }
