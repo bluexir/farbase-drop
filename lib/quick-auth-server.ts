@@ -7,14 +7,24 @@ type VerifiedUser = {
 const client = createClient();
 
 function parseFid(sub: unknown): number {
-  if (typeof sub !== "string") {
+  // Farcaster Quick Auth "sub" alanı bazı ortamlarda number, bazılarında string gelebiliyor.
+  // Biz sadece pozitif integer FID kabul ediyoruz.
+  let fid: number;
+
+  if (typeof sub === "number") {
+    fid = sub;
+  } else if (typeof sub === "string") {
+    fid = Number(sub);
+  } else if (typeof sub === "bigint") {
+    if (sub > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Errors.InvalidTokenError("Invalid fid");
+    }
+    fid = Number(sub);
+  } else {
     throw new Errors.InvalidTokenError("Invalid token subject");
   }
 
-  const fid = Number(sub);
-
-  // fid pozitif integer olmalı
-  if (!Number.isInteger(fid) || fid <= 0) {
+  if (!Number.isFinite(fid) || !Number.isInteger(fid) || fid <= 0) {
     throw new Errors.InvalidTokenError("Invalid fid");
   }
 
