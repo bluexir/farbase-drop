@@ -10,22 +10,36 @@ export async function POST(request: Request) {
     const user = await requireQuickAuthUser(request);
 
     const body = await request.json();
-    const {
-      address,
-      score,
-      mergeCount,
-      highestLevel,
-      mode,
-      gameLog,
-      sessionId
-    } = body;
+    const { address, score, mergeCount, highestLevel, mode, gameLog, sessionId } = body;
 
-    if (!address || !mode || !sessionId) {
+    if (
+      !mode ||
+      !sessionId ||
+      typeof score !== "number" ||
+      typeof mergeCount !== "number" ||
+      typeof highestLevel !== "number" ||
+      !gameLog
+    ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     if (mode !== "practice" && mode !== "tournament") {
       return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
+    }
+
+    // Practice modunda adres zorunlu değil (cüzdan istemiyoruz).
+    // Tournament modunda adres zorunlu.
+    const normalizedAddress =
+      mode === "tournament"
+        ? typeof address === "string" && address.length > 0
+          ? address
+          : null
+        : typeof address === "string" && address.length > 0
+        ? address
+        : "0x0000000000000000000000000000000000000000";
+
+    if (mode === "tournament" && !normalizedAddress) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const logValidation = validateGameLog(gameLog as GameLog);
@@ -46,7 +60,7 @@ export async function POST(request: Request) {
       console.error("Score mismatch:", {
         client: score,
         server: calculated.score,
-        diff: scoreDiff
+        diff: scoreDiff,
       });
       return NextResponse.json({ error: "Score validation failed" }, { status: 400 });
     }
@@ -54,18 +68,18 @@ export async function POST(request: Request) {
     if (calculated.mergeCount !== mergeCount || calculated.highestLevel !== highestLevel) {
       console.error("Stats mismatch:", {
         client: { mergeCount, highestLevel },
-        server: calculated
+        server: calculated,
       });
       return NextResponse.json({ error: "Stats validation failed" }, { status: 400 });
     }
 
     const entry: LeaderboardEntry = {
       fid: user.fid, // ✅ sadece token'dan
-      address,
+      address: normalizedAddress,
       score: calculated.score,
       mergeCount: calculated.mergeCount,
       highestLevel: calculated.highestLevel,
-      playedAt: Date.now()
+      playedAt: Date.now(),
     };
 
     await saveScore(mode, entry);
@@ -73,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: true,
-        verifiedScore: calculated.score
+        verifiedScore: calculated.score,
       },
       { status: 200 }
     );
