@@ -1,103 +1,91 @@
-import { NextResponse } from "next/server";
-import { saveScore, LeaderboardEntry } from "@/lib/leaderboard";
-import { calculateScoreFromLog, validateGameLog, GameLog } from "@/lib/game-log";
-import { requireQuickAuthUser, isInvalidTokenError } from "@/lib/quick-auth-server";
+"use client";
 
-export const dynamic = "force-dynamic";
+import React, { useEffect, useMemo, useState } from "react";
+import { sdk } from "@farcaster/miniapp-sdk";
+import MainMenu from "@/components/MainMenu";
+import Game from "@/components/Game";
 
-export async function POST(request: Request) {
-  try {
-    const user = await requireQuickAuthUser(request);
+type Mode = "practice" | "tournament";
 
-    const body = await request.json();
-    const { address, score, mergeCount, highestLevel, mode, gameLog, sessionId } = body;
+export default function HomePage() {
+  const [sdkReady, setSdkReady] = useState(false);
+  const [fid, setFid] = useState<number | null>(null);
 
-    if (
-      !mode ||
-      !sessionId ||
-      typeof score !== "number" ||
-      typeof mergeCount !== "number" ||
-      typeof highestLevel !== "number" ||
-      !gameLog
-    ) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
+  const [screen, setScreen] = useState<"menu" | "game">("menu");
+  const [mode, setMode] = useState<Mode>("practice");
 
-    if (mode !== "practice" && mode !== "tournament") {
-      return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
-    }
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
-    // ✅ address her durumda string olmalı (LeaderboardEntry tipi böyle)
-    // Practice: wallet istemiyoruz → sabit dummy address
-    // Tournament: address zorunlu
-    let normalizedAddress: string;
+  useEffect(() => {
+    let cancelled = false;
 
-    if (mode === "tournament") {
-      if (typeof address !== "string" || address.length === 0) {
-        return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    async function init() {
+      try {
+        // Mini App içinde mi? (Browser testlerinde patlamasın)
+        const inMiniApp = await sdk.isInMiniApp();
+
+        // Mini App değilse yine de UI açılsın (local/web test)
+        if (!inMiniApp) {
+          if (!cancelled) {
+            setSdkReady(true);
+            setFid(null);
+          }
+          return;
+        }
+
+        // Splash’ı kapatmak için gerekli
+        await sdk.actions.ready();
+
+        // Context
+        const ctx = await sdk.context;
+
+        if (!cancelled) {
+          setSdkReady(true);
+          setFid(ctx?.user?.fid ?? null);
+        }
+      } catch (e) {
+        // SDK init sorununda en azından ekran gelsin
+        if (!cancelled) {
+          setSdkReady(true);
+          setFid(null);
+        }
+        console.error("SDK init error:", e);
       }
-      normalizedAddress = address;
-    } else {
-      normalizedAddress = "0x0000000000000000000000000000000000000000";
     }
 
-    const logValidation = validateGameLog(gameLog as GameLog);
-    if (!logValidation.valid) {
-      console.error("Invalid game log:", logValidation.errors);
-      return NextResponse.json(
-        { error: "Invalid game data", details: logValidation.errors },
-        { status: 400 }
-      );
-    }
+    init();
 
-    const calculated = calculateScoreFromLog(gameLog as GameLog);
-
-    const scoreDiff = Math.abs(calculated.score - score);
-    const scoreTolerance = score * 0.05;
-
-    if (scoreDiff > scoreTolerance) {
-      console.error("Score mismatch:", {
-        client: score,
-        server: calculated.score,
-        diff: scoreDiff,
-      });
-      return NextResponse.json({ error: "Score validation failed" }, { status: 400 });
-    }
-
-    if (calculated.mergeCount !== mergeCount || calculated.highestLevel !== highestLevel) {
-      console.error("Stats mismatch:", {
-        client: { mergeCount, highestLevel },
-        server: calculated,
-      });
-      return NextResponse.json({ error: "Stats validation failed" }, { status: 400 });
-    }
-
-    const entry: LeaderboardEntry = {
-      fid: user.fid, // ✅ sadece token'dan
-      address: normalizedAddress,
-      score: calculated.score,
-      mergeCount: calculated.mergeCount,
-      highestLevel: calculated.highestLevel,
-      playedAt: Date.now(),
+    return () => {
+      cancelled = true;
     };
+  }, []);
 
-    await saveScore(mode, entry);
+  const canPlay = useMemo(() => sdkReady, [sdkReady]);
 
-    return NextResponse.json(
-      {
-        success: true,
-        verifiedScore: calculated.score,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    if (isInvalidTokenError(error)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("Save score error:", error);
-    return NextResponse.json(
-      { error: "Failed to save score", details: String(error) },
-      { status: 500 }
-    );
-  }
+  return (
+    <main className="min-h-screen w-full flex items-center justify-center p-4">
+      <div className="w-full max-w-[520px]">
+        {screen === "menu" ? (
+          <MainMenu
+            sdkReady={sdkReady}
+            fid={fid}
+            onStart={(selectedMode, newSessionId) => {
+              setMode(selectedMode);
+              setSessionId(newSessionId);
+              setScreen("game");
+            }}
+          />
+        ) : (
+          <Game
+            sdkReady={sdkReady}
+            fid={fid}
+            sessionId={sessionId}
+            mode={mode}
+            canPlay={canPlay}
+            onBackToMenu={() => setScreen("menu")}
+          />
+        )}
+      </div>
+    </main>
+  );
 }
