@@ -27,19 +27,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
     }
 
-    // Practice modunda adres zorunlu değil (cüzdan istemiyoruz).
-    // Tournament modunda adres zorunlu.
-    const normalizedAddress =
-      mode === "tournament"
-        ? typeof address === "string" && address.length > 0
-          ? address
-          : null
-        : typeof address === "string" && address.length > 0
-        ? address
-        : "0x0000000000000000000000000000000000000000";
+    // ✅ address her durumda string olmalı (LeaderboardEntry tipi böyle)
+    // Practice: wallet istemiyoruz → sabit dummy address
+    // Tournament: address zorunlu
+    let normalizedAddress: string;
 
-    if (mode === "tournament" && !normalizedAddress) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (mode === "tournament") {
+      if (typeof address !== "string" || address.length === 0) {
+        return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      }
+      normalizedAddress = address;
+    } else {
+      normalizedAddress = "0x0000000000000000000000000000000000000000";
     }
 
     const logValidation = validateGameLog(gameLog as GameLog);
