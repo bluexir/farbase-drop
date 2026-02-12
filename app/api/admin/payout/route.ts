@@ -1,78 +1,57 @@
 import { NextResponse } from "next/server";
-import { Redis } from "@upstash/redis";
-import {
-  requireQuickAuthUser,
-  isInvalidTokenError,
-} from "@/lib/quick-auth-server";
-import { isAdmin } from "@/lib/admin";
+import { requireAdmin, getSettings } from "@/lib/admin";
+import { isInvalidTokenError } from "@/lib/quick-auth-server";
 import { getTop5Tournament, enrichWithProfiles } from "@/lib/leaderboard";
-import { getWeekKey } from "@/lib/attempts";
-import { sendPayouts } from "@/lib/eth";
+import { getPoolBalance, distributePrizes } from "@/lib/eth";
+import { ethers } from "ethers";
 
 export const dynamic = "force-dynamic";
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-});
-
-const SETTINGS_KEY = "admin:settings";
-
-async function getSettings() {
-  const s = await redis.get<any>(SETTINGS_KEY);
-  if (s) return s;
-  return {
-    payoutDistribution: [40, 25, 15, 10, 10],
-  };
-}
-
 export async function GET(request: Request) {
   try {
-    const user = await requireQuickAuthUser(request);
-    if (!isAdmin(user.fid)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    await requireAdmin(request);
 
     const settings = await getSettings();
-    const dist = settings.payoutDistribution || [40, 25, 15, 10, 10];
+    const top5Raw = await getTop5Tournament();
+    const top5 = await enrichWithProfiles(top5Raw);
 
-    const top5 = await getTop5Tournament();
-    const enriched = await enrichWithProfiles(top5);
+    let poolAmount = "0";
+    try {
+      poolAmount = await getPoolBalance();
+    } catch (err) {
+      console.error("Pool fetch error:", err);
+    }
 
-    const weekKey = getWeekKey();
-    const poolKey = `tournament:pool:${weekKey}:usdc`;
-    const pool = (await redis.get<string>(poolKey)) ?? "0";
-
-    const winners = enriched.slice(0, 5).map((w, idx) => {
-      const percentage = dist[idx] ?? 0;
-      const payout = ((Number(pool) * percentage) / 100).toFixed(2);
-      return {
-        rank: idx + 1,
-        fid: w.fid,
-        address: w.address,
-        score: w.score,
-        displayName: w.displayName || `FID: ${w.fid}`,
-        payout,
-        percentage,
-      };
-    });
+    const pool = parseFloat(poolAmount);
+    const distribution = settings.payoutDistribution;
+    const preview = top5.map((entry, i) => ({
+      rank: i + 1,
+      fid: entry.fid,
+      displayName: entry.displayName || `FID: ${entry.fid}`,
+      username: entry.username,
+      address: entry.address,
+      score: entry.score,
+      payout:
+        distribution[i] !== undefined
+          ? ((pool * distribution[i]) / 100).toFixed(2)
+          : "0.00",
+      percentage: distribution[i] || 0,
+    }));
 
     return NextResponse.json(
-      {
-        preview: {
-          pool,
-          winners,
-        },
-      },
+      { pool: poolAmount, distribution, winners: preview },
       { status: 200 }
     );
-  } catch (error) {
-    if (isInvalidTokenError(error)) {
+  } catch (e) {
+    if (isInvalidTokenError(e)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("Admin payout GET error:", error);
+    if (e instanceof Error && e.message.includes("not admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    console.error("Admin payout GET error:", e);
     return NextResponse.json(
-      { error: "Failed to fetch payout preview" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -80,58 +59,34 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireQuickAuthUser(request);
-    if (!isAdmin(user.fid)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const settings = await getSettings();
-    const dist = settings.payoutDistribution || [40, 25, 15, 10, 10];
+    await requireAdmin(request);
 
     const top5 = await getTop5Tournament();
-    const enriched = await enrichWithProfiles(top5);
 
-    if (!enriched.length) {
-      return NextResponse.json(
-        { error: "No winners this week" },
-        { status: 400 }
-      );
-    }
+    const winners: [string, string, string, string, string] = [
+      top5[0]?.address || ethers.ZeroAddress,
+      top5[1]?.address || ethers.ZeroAddress,
+      top5[2]?.address || ethers.ZeroAddress,
+      top5[3]?.address || ethers.ZeroAddress,
+      top5[4]?.address || ethers.ZeroAddress,
+    ];
 
-    const weekKey = getWeekKey();
-    const poolKey = `tournament:pool:${weekKey}:usdc`;
-    const pool = (await redis.get<string>(poolKey)) ?? "0";
+    const txHash = await distributePrizes(winners);
 
-    const winners = enriched.slice(0, 5).map((w, idx) => ({
-      address: w.address,
-      percentage: dist[idx] ?? 0,
-      fid: w.fid,
-      score: w.score,
-    }));
-
-    const txHash = await sendPayouts({
-      poolUsdc: pool,
-      winners: winners.map((w) => ({
-        address: w.address,
-        percentage: w.percentage,
-      })),
-    });
-
-    await redis.set(`tournament:payout:${weekKey}`, {
-      txHash,
-      at: Date.now(),
-      pool,
-      winners,
-    });
-
-    return NextResponse.json({ ok: true, txHash }, { status: 200 });
-  } catch (error) {
-    if (isInvalidTokenError(error)) {
+    return NextResponse.json(
+      { success: true, txHash, winners },
+      { status: 200 }
+    );
+  } catch (e) {
+    if (isInvalidTokenError(e)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("Admin payout POST error:", error);
+    if (e instanceof Error && e.message.includes("not admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    console.error("Admin payout POST error:", e);
     return NextResponse.json(
-      { error: "Failed to trigger payout", details: String(error) },
+      { error: "Payout failed", details: String(e) },
       { status: 500 }
     );
   }
