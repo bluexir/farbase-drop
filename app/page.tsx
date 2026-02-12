@@ -183,4 +183,284 @@ export default function Home() {
             return;
           }
         } catch (e) {
-          console.error("Attempt
+          console.error("Attempt check error:", e);
+        }
+
+        resetGameStateAndStart("practice");
+        return;
+      }
+
+      // ── Tournament flow ──────────────────────────
+
+      // Check admin status + remaining attempts
+      let admin = false;
+      let hasAttempts = false;
+      try {
+        const res = await sdk.quickAuth.fetch(
+          "/api/remaining-attempts?mode=tournament"
+        );
+        const data = await res.json();
+        admin = !!data.isAdmin;
+        hasAttempts = data.remaining > 0;
+        setIsAdmin(admin);
+      } catch (e) {
+        console.error("Tournament attempt check error:", e);
+      }
+
+      // If already has attempts, just play
+      if (hasAttempts || admin) {
+        // Still need wallet address for tournament leaderboard
+        try {
+          const provider = await sdk.wallet.getEthereumProvider();
+          if (provider) {
+            const accounts = (await provider.request({
+              method: "eth_accounts",
+            })) as string[];
+            if (accounts?.[0]) setAddress(accounts[0]);
+          }
+        } catch {
+          // Not critical if we already have attempts
+        }
+
+        if (admin) {
+          // Admin: create entry without payment
+          try {
+            await sdk.quickAuth.fetch("/api/create-entry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                mode: "tournament",
+                address: address || "",
+              }),
+            });
+          } catch (e) {
+            console.error("Admin entry creation error:", e);
+          }
+        }
+
+        resetGameStateAndStart("tournament");
+        return;
+      }
+
+      // ── Need to buy entry ────────────────────────
+
+      try {
+        const provider = await sdk.wallet.getEthereumProvider();
+        if (!provider) {
+          alert("Farcaster wallet required for tournament");
+          return;
+        }
+
+        const accounts = (await provider.request({
+          method: "eth_accounts",
+        })) as string[];
+        const currentAddress = accounts?.[0];
+        if (!currentAddress) {
+          alert("Please connect your wallet first");
+          return;
+        }
+        setAddress(currentAddress);
+
+        // Switch to Base
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0x2105" }],
+        });
+
+        const USDC_ADDRESS =
+          process.env.NEXT_PUBLIC_USDC_ADDRESS ||
+          "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+        const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+
+        if (!CONTRACT_ADDRESS) {
+          alert("Contract address not configured");
+          return;
+        }
+
+        const waitForTx = async (txHash: `0x${string}`) => {
+          let attempts = 0;
+          while (attempts < 30) {
+            const receipt = (await provider.request({
+              method: "eth_getTransactionReceipt",
+              params: [txHash],
+            })) as any;
+            if (receipt?.status === "0x1") return;
+            if (receipt?.status === "0x0")
+              throw new Error("Transaction failed");
+            await new Promise((r) => setTimeout(r, 2000));
+            attempts++;
+          }
+          throw new Error("Transaction confirmation timeout");
+        };
+
+        const { ethers } = await import("ethers");
+
+        // 1) Approve USDC
+        const usdcIface = new ethers.Interface([
+          "function approve(address spender, uint256 amount)",
+        ]);
+        const approveData = usdcIface.encodeFunctionData("approve", [
+          CONTRACT_ADDRESS,
+          1000000,
+        ]);
+        const approveTx = (await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: currentAddress as `0x${string}`,
+              to: USDC_ADDRESS as `0x${string}`,
+              data: approveData as `0x${string}`,
+            },
+          ],
+        })) as `0x${string}`;
+        await waitForTx(approveTx);
+
+        // 2) Enter tournament
+        const contractIface = new ethers.Interface([
+          "function enterTournament(address token)",
+        ]);
+        const enterData = contractIface.encodeFunctionData(
+          "enterTournament",
+          [USDC_ADDRESS]
+        );
+        const entryTx = (await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: currentAddress as `0x${string}`,
+              to: CONTRACT_ADDRESS as `0x${string}`,
+              data: enterData as `0x${string}`,
+            },
+          ],
+        })) as `0x${string}`;
+        await waitForTx(entryTx);
+
+        // 3) Create server entry
+        await sdk.quickAuth.fetch("/api/create-entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "tournament",
+            address: currentAddress,
+          }),
+        });
+
+        resetGameStateAndStart("tournament");
+      } catch (e) {
+        console.error("Tournament entry error:", e);
+        alert(
+          "Tournament entry failed. Please try again.\n" +
+            (e instanceof Error ? e.message : String(e))
+        );
+      }
+    },
+    [resetGameStateAndStart, address]
+  );
+
+  // ── Restart (play again) ──────────────────────────
+
+  const handleRestart = useCallback(() => {
+    // Remaining attempts check is done server-side on save-score.
+    // If no attempts left, save-score will fail and user sees error.
+    setGameOver(false);
+    setScore(0);
+    setMergeCount(0);
+    setHighestLevel(1);
+    setScoreSaved(false);
+    setScoreSaveError(null);
+    setIsNewBest(false);
+    setGameKey((k) => k + 1);
+  }, []);
+
+  // ── Loading ───────────────────────────────────────
+
+  if (loading || fid === null) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#555",
+          background: "#000",
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              fontSize: "2rem",
+              marginBottom: "12px",
+              color: "#00f3ff",
+              fontWeight: 800,
+            }}
+          >
+            🪙
+          </div>
+          <p style={{ fontSize: "0.85rem" }}>Loading FarBase Drop...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────
+
+  return (
+    <div style={{ minHeight: "100vh" }}>
+      {screen === "menu" && (
+        <MainMenu
+          fid={fid}
+          onPractice={() => startGame("practice")}
+          onTournament={() => startGame("tournament")}
+          onLeaderboard={() => setScreen("leaderboard")}
+          onAdmin={isAdmin ? () => setScreen("admin") : undefined}
+        />
+      )}
+
+      {screen === "leaderboard" && (
+        <Leaderboard fid={fid} onBack={() => setScreen("menu")} />
+      )}
+
+      {screen === "admin" && (
+        <AdminPanel onBack={() => setScreen("menu")} />
+      )}
+
+      {(screen === "practice" || screen === "tournament") && (
+        <div style={{ padding: 16, position: "relative" }}>
+          {!gameOver ? (
+            <>
+              <Scoreboard
+                score={score}
+                highestLevel={highestLevel}
+                mergeCount={mergeCount}
+              />
+              <GameCanvas
+                key={gameKey}
+                mode={screen}
+                gameStarted={true}
+                fid={fid}
+                sessionId={`${fid}-${gameKey}`}
+                onMerge={handleMerge}
+                onGameOver={handleGameOver}
+              />
+            </>
+          ) : (
+            <GameOver
+              score={score}
+              highestLevel={highestLevel}
+              mergeCount={mergeCount}
+              scoreSaved={scoreSaved}
+              scoreSaveError={scoreSaveError}
+              mode={currentMode}
+              remaining={remainingAttempts}
+              isNewBest={isNewBest}
+              onRestart={handleRestart}
+              onMenu={() => setScreen("menu")}
+              onCast={handleCast}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
