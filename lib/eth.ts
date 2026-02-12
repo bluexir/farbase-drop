@@ -1,33 +1,69 @@
-import { getAddress, isAddress } from "ethers";
+import { ethers } from "ethers";
 
-export type Hex = `0x${string}`;
-export type Address = Hex;
+const CONTRACT_ABI = [
+  {
+    inputs: [
+      { internalType: "address[5]", name: "winners", type: "address[5]" },
+    ],
+    name: "distributePrizes",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "address", name: "token", type: "address" }],
+    name: "getPool",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
 
-const HEX_RE = /^0x[0-9a-fA-F]+$/;
-
-export function isHex(value: unknown): value is Hex {
-  if (typeof value !== "string") return false;
-  if (!HEX_RE.test(value)) return false;
-  // Must be an even number of hex chars after 0x (bytes)
-  return (value.length - 2) % 2 === 0;
+function getProvider(): ethers.JsonRpcProvider {
+  const rpc =
+    process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org";
+  return new ethers.JsonRpcProvider(rpc);
 }
 
-export function assertHex(value: unknown, label = "hex"): Hex {
-  if (!isHex(value)) {
-    throw new Error(`Invalid ${label}`);
-  }
-  return value;
-}
-
-export function parseAddress(value: unknown): Address | null {
-  if (typeof value !== "string") return null;
-  if (!isAddress(value)) return null;
-  // Normalize to checksum address; still satisfies 0x${string}
-  return getAddress(value) as Address;
-}
-
-export function assertAddress(value: unknown, label = "address"): Address {
-  const addr = parseAddress(value);
-  if (!addr) throw new Error(`Invalid ${label}`);
+function getContractAddress(): string {
+  const addr = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+  if (!addr) throw new Error("Missing NEXT_PUBLIC_CONTRACT_ADDRESS");
   return addr;
+}
+
+function getUsdcAddress(): string {
+  return (
+    process.env.NEXT_PUBLIC_USDC_ADDRESS ||
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  );
+}
+
+export async function getPoolBalance(): Promise<string> {
+  const provider = getProvider();
+  const contract = new ethers.Contract(
+    getContractAddress(),
+    CONTRACT_ABI,
+    provider
+  );
+  const balance = await contract.getPool(getUsdcAddress());
+  return ethers.formatUnits(balance, 6);
+}
+
+export async function distributePrizes(
+  winnerAddresses: [string, string, string, string, string]
+): Promise<string> {
+  const key = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!key) throw new Error("Missing DEPLOYER_PRIVATE_KEY");
+
+  const provider = getProvider();
+  const wallet = new ethers.Wallet(key, provider);
+  const contract = new ethers.Contract(
+    getContractAddress(),
+    CONTRACT_ABI,
+    wallet
+  );
+
+  const tx = await contract.distributePrizes(winnerAddresses);
+  const receipt = await tx.wait();
+  return receipt.hash;
 }
