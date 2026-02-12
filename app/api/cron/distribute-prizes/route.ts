@@ -1,93 +1,91 @@
 import { NextResponse } from "next/server";
-import { ethers } from "ethers";
-import { getTop5Tournament } from "@/lib/leaderboard";
+import { Redis } from "@upstash/redis";
+import { getTop5Tournament, enrichWithProfiles } from "@/lib/leaderboard";
+import { isAdminFid } from "@/lib/admin";
+import { sendPayouts } from "@/lib/eth";
+import { getWeekKey } from "@/lib/attempts";
 
-const CONTRACT_ABI = [
-  {
-    inputs: [{ internalType: "address[5]", name: "winners", type: "address[5]" }],
-    name: "distributePrizes",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "getUSDCPool",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-];
+export const dynamic = "force-dynamic";
 
-const REFERENCE_WEEK_START = new Date("2025-02-04T14:00:00Z").getTime();
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
 
-function getWeekNumber(): number {
-  const now = Date.now();
-  const diffMs = now - REFERENCE_WEEK_START;
-  const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
-  return diffWeeks + 1;
+function isAuthorized(request: Request) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const header = request.headers.get("authorization") || "";
+  return header === `Bearer ${secret}`;
 }
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Vercel cron calls with Authorization: Bearer <CRON_SECRET>
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-    const contractAddress = process.env.CONTRACT_ADDRESS;
+    const top5 = await getTop5Tournament();
+    const enriched = await enrichWithProfiles(top5);
 
-    if (!privateKey || !contractAddress) {
+    if (!enriched.length) {
       return NextResponse.json(
-        { error: "DEPLOYER_PRIVATE_KEY or CONTRACT_ADDRESS not set" },
-        { status: 500 }
+        { ok: true, message: "No scores to payout this week" },
+        { status: 200 }
       );
     }
 
-    const provider = new ethers.JsonRpcProvider("https://mainnet.base.org");
-    const wallet = new ethers.Wallet(privateKey, provider);
-    const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, wallet);
+    // Prize pool: this is server-side UI pool; real pool should come from contract.
+    const weekKey = getWeekKey();
+    const poolKey = `tournament:pool:${weekKey}:usdc`;
+    const pool = (await redis.get<string>(poolKey)) ?? "0";
 
-    // Pool kontrolü
-    const poolBalance = await contract.getUSDCPool();
-    if (poolBalance === 0n) {
-      return NextResponse.json({ message: "No pool to distribute" }, { status: 200 });
-    }
+    // Payout distribution: 40/25/15/10/10 (default)
+    const distribution = [40, 25, 15, 10, 10];
 
-    // Tournament Top 5
-    const top5 = await getTop5Tournament();
+    const winners = enriched.slice(0, 5).map((w, idx) => ({
+      rank: idx + 1,
+      fid: w.fid,
+      address: w.address,
+      score: w.score,
+      displayName: w.displayName || `FID: ${w.fid}`,
+      percentage: distribution[idx],
+    }));
 
-    const winners: string[] = [
-      top5[0]?.address || ethers.ZeroAddress,
-      top5[1]?.address || ethers.ZeroAddress,
-      top5[2]?.address || ethers.ZeroAddress,
-      top5[3]?.address || ethers.ZeroAddress,
-      top5[4]?.address || ethers.ZeroAddress, // HATA BURADAYDI: ends -> ethers yapıldı
-    ];
+    // Prevent paying admins (safety)
+    const filtered = winners.filter((w) => !isAdminFid(w.fid));
 
-    const weekNumber = getWeekNumber();
-    const isFourthWeek = weekNumber % 4 === 0;
+    const txHash = await sendPayouts({
+      poolUsdc: pool,
+      winners: filtered.map((w) => ({
+        address: w.address,
+        percentage: w.percentage,
+      })),
+    });
 
-    // 4. hafta — havuza kalan %10'ları da dağıt
-    const tx = await contract.distributePrizes(winners);
-    const receipt = await tx.wait();
+    // Mark payout done for the week
+    await redis.set(`tournament:payout:${weekKey}`, {
+      txHash,
+      at: Date.now(),
+      pool,
+      winners: filtered,
+    });
 
     return NextResponse.json(
       {
-        success: true,
-        week: weekNumber,
-        isFourthWeek,
-        winners,
-        txHash: receipt.hash,
-        poolBefore: poolBalance.toString(),
+        ok: true,
+        weekKey,
+        pool,
+        txHash,
+        winners: filtered,
       },
       { status: 200 }
     );
-  } catch (error) {
-    console.error("Distribute prizes error:", error);
+  } catch (e) {
+    console.error("distribute-prizes cron error:", e);
     return NextResponse.json(
-      { error: "Failed to distribute prizes", details: String(error) },
+      { error: "Failed to distribute prizes", details: String(e) },
       { status: 500 }
     );
   }
