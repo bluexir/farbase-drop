@@ -1,156 +1,149 @@
 import { Redis } from "@upstash/redis";
 
-export interface LeaderboardEntry {
+export type LeaderboardEntry = {
   fid: number;
   address: string;
   score: number;
   mergeCount: number;
   highestLevel: number;
   playedAt: number;
-}
+};
 
-export interface EnrichedLeaderboardEntry extends LeaderboardEntry {
+export type EnrichedEntry = LeaderboardEntry & {
   displayName?: string;
   username?: string;
   pfpUrl?: string;
-}
-
-const REFERENCE_WEEK_START = new Date("2025-02-04T14:00:00Z").getTime();
-
-export function getWeekNumber(): number {
-  const now = Date.now();
-  const diffMs = now - REFERENCE_WEEK_START;
-  const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
-  return diffWeeks + 1;
-}
+};
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL!,
   token: process.env.KV_REST_API_TOKEN!,
 });
 
+function getKey(mode: "practice" | "tournament") {
+  return `leaderboard:${mode}:${getWeekKey()}`;
+}
+
+function getBestKey(mode: "practice" | "tournament", fid: number) {
+  return `leaderboard:${mode}:${getWeekKey()}:best:${fid}`;
+}
+
+function getWeekKey() {
+  const now = new Date();
+  const utc = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      0,
+      0,
+      0,
+      0
+    )
+  );
+  const day = utc.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  utc.setUTCDate(utc.getUTCDate() - diffToMonday);
+
+  const y = utc.getUTCFullYear();
+  const m = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(utc.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export async function saveScore(
   mode: "practice" | "tournament",
   entry: LeaderboardEntry
-): Promise<void> {
-  const weekNumber = getWeekNumber();
-  const key = `${mode}:week:${weekNumber}:${entry.fid}`;
+) {
+  const bestKey = getBestKey(mode, entry.fid);
+  const prev = await redis.get<LeaderboardEntry>(bestKey);
 
-  const existing = await redis.get<LeaderboardEntry>(key);
-  if (existing && existing.score >= entry.score) {
-    return; // keep higher score
+  // keep higher score only
+  if (prev && prev.score >= entry.score) {
+    return;
   }
 
-  await redis.set(key, entry);
+  await redis.set(bestKey, entry);
+
+  const key = getKey(mode);
+  // store as hash map by fid
+  await redis.hset(key, {
+    [String(entry.fid)]: JSON.stringify(entry),
+  });
 }
 
-export async function getTop5(
-  mode: "practice" | "tournament"
-): Promise<LeaderboardEntry[]> {
-  const weekNumber = getWeekNumber();
-  const pattern = `${mode}:week:${weekNumber}:*`;
+export async function getTop5(mode: "practice" | "tournament") {
+  const key = getKey(mode);
+  const all = await redis.hgetall<Record<string, string>>(key);
 
-  const rawKeys = await redis.keys(pattern);
-  const keys: string[] = Array.isArray(rawKeys)
-    ? rawKeys.filter((k): k is string => typeof k === "string")
-    : [];
-
-  if (keys.length === 0) return [];
-
-  const entries: LeaderboardEntry[] = [];
-  for (const key of keys) {
-    const entry = await redis.get<LeaderboardEntry>(key);
-    if (entry) entries.push(entry);
-  }
+  const entries: LeaderboardEntry[] = Object.values(all || {})
+    .map((v) => {
+      try {
+        return JSON.parse(v) as LeaderboardEntry;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as LeaderboardEntry[];
 
   entries.sort((a, b) => b.score - a.score);
   return entries.slice(0, 5);
 }
 
-export async function getTop5Tournament(): Promise<LeaderboardEntry[]> {
+export async function getTop5Tournament() {
   return getTop5("tournament");
 }
 
 export async function getPlayerBestScore(
   mode: "practice" | "tournament",
   fid: number
-): Promise<LeaderboardEntry | null> {
-  const weekNumber = getWeekNumber();
-  const key = `${mode}:week:${weekNumber}:${fid}`;
-
-  const entry = await redis.get<LeaderboardEntry>(key);
-  return entry || null;
+) {
+  const bestKey = getBestKey(mode, fid);
+  const best = await redis.get<LeaderboardEntry>(bestKey);
+  return best || null;
 }
 
-// ── Neynar Enrichment ─────────────────────────────────
-
-export async function enrichWithProfiles(
-  entries: LeaderboardEntry[]
-): Promise<EnrichedLeaderboardEntry[]> {
-  if (entries.length === 0) return [];
-
+async function fetchProfiles(fids: number[]) {
   const apiKey = process.env.NEYNAR_API_KEY;
-  if (!apiKey) {
-    // No API key — return entries with FID-only display
-    return entries.map((e) => ({
-      ...e,
-      displayName: `FID: ${e.fid}`,
-      username: undefined,
-      pfpUrl: undefined,
-    }));
-  }
+  if (!apiKey || fids.length === 0) return {};
 
   try {
-    const fids = entries.map((e) => e.fid).join(",");
     const res = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fids}`,
+      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fids.join(",")}`,
       {
         headers: {
           accept: "application/json",
-          "x-api-key": apiKey,
-        },
-        next: { revalidate: 60 }, // cache 60s
+          api_key: apiKey,
+        } as any,
       }
     );
 
-    if (!res.ok) {
-      console.error("Neynar API error:", res.status);
-      return entries.map((e) => ({
-        ...e,
-        displayName: `FID: ${e.fid}`,
-      }));
-    }
-
+    if (!res.ok) return {};
     const data = await res.json();
-    const users: Record<
-      number,
-      { display_name: string; username: string; pfp_url: string }
-    > = {};
 
-    if (data.users && Array.isArray(data.users)) {
-      for (const u of data.users) {
-        users[u.fid] = {
-          display_name: u.display_name || `FID: ${u.fid}`,
-          username: u.username || "",
-          pfp_url: u.pfp_url || "",
-        };
-      }
+    const users = data?.users || [];
+    const map: Record<number, any> = {};
+    for (const u of users) {
+      map[u.fid] = u;
     }
-
-    return entries.map((e) => {
-      const profile = users[e.fid];
-      return {
-        ...e,
-        displayName: profile?.display_name || `FID: ${e.fid}`,
-        username: profile?.username,
-        pfpUrl: profile?.pfp_url,
-      };
-    });
-  } catch (err) {
-    console.error("Neynar enrichment failed:", err);
-    return entries.map((e) => ({
-      ...e,
-      displayName: `FID: ${e.fid}`,
-    }));
+    return map;
+  } catch {
+    return {};
   }
+}
+
+export async function enrichWithProfiles(entries: LeaderboardEntry[]) {
+  const fids = entries.map((e) => e.fid);
+  const profiles = await fetchProfiles(fids);
+
+  return entries.map((e) => {
+    const p = profiles[e.fid];
+    const enriched: EnrichedEntry = {
+      ...e,
+      displayName: p?.display_name,
+      username: p?.username,
+      pfpUrl: p?.pfp_url,
+    };
+    return enriched;
+  });
 }
