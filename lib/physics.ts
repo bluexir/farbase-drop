@@ -1,244 +1,178 @@
 import Matter from "matter-js";
-import { getCoinByLevel } from "./coins";
+import { getCoinByLevel } from "@/lib/coins";
 
-const { Engine, World, Bodies } = Matter;
+export const GAME_WIDTH = 420;
+export const GAME_HEIGHT = 560;
+export const DANGER_LINE = 120;
 
-// Farcaster Mini App resmi spesifikasyon:
-// Web: 424x695px sabit
-// Mobil: cihaz boyutuna göre
-const getGameDimensions = () => {
-  if (typeof window === "undefined") {
-    return { width: 424, height: 695 };
-  }
-
-  const isMobile = window.innerWidth < 768;
-
-  if (isMobile) {
-    // Mobil: Farcaster cihaz boyutuna göre render eder
-    // Güvenli alan için küçük margin bırakıyoruz
-    const width = Math.min(window.innerWidth * 0.95, 424);
-    const height = Math.min(window.innerHeight * 0.7, 695);
-    return { width, height };
-  }
-
-  // Web: Farcaster spesifikasyona göre sabit 424x695
-  return { width: 424, height: 695 };
-};
-
-export let GAME_WIDTH = 424;
-export let GAME_HEIGHT = 695;
-export let DANGER_LINE = 35;
-
-export const updateDimensions = () => {
-  const dims = getGameDimensions();
-  GAME_WIDTH = dims.width;
-  GAME_HEIGHT = dims.height;
-  DANGER_LINE = Math.floor(dims.height * 0.05);
-};
-
-if (typeof window !== "undefined") {
-  updateDimensions();
-}
-
-const WALL_THICKNESS = 20;
-
-export interface GameCoin {
-  body: Matter.Body;
+export type CoinBody = {
+  id: string;
   level: number;
-}
+  x: number;
+  y: number;
+  radius: number;
+};
 
-export interface PhysicsEngine {
-  engine: Matter.Engine;
-  coins: GameCoin[];
-  mergeCount: number;
-  highestLevel: number;
-  isGameOver: boolean;
-  addCoin: (x: number, level?: number) => void;
-  update: () => void;
+export type PhysicsEngine = {
+  dropCoin: (x: number) => void;
+  getBodies: () => CoinBody[];
   destroy: () => void;
+};
+
+const RADIUS_BY_LEVEL: Record<number, number> = {
+  1: 16,
+  2: 18,
+  3: 20,
+  4: 22,
+  5: 24,
+  6: 26,
+  7: 28,
+  8: 30,
+  9: 32,
+};
+
+function radiusForLevel(level: number) {
+  return RADIUS_BY_LEVEL[level] || Math.min(44, 16 + level * 2);
 }
 
-export function createPhysicsEngine(
-  onMerge: (fromLevel: number, toLevel: number) => void
-): PhysicsEngine {
-  const engine = Engine.create({
-    gravity: {
-      x: 0,
-      y: isMobile() ? 1.2 : 1,
-    },
+export function createPhysicsEngine(params: {
+  width: number;
+  height: number;
+  dangerLine: number;
+  onMerge: (fromLevel: number, toLevel: number, scoreInc: number) => void;
+  onGameOver: () => void;
+}): PhysicsEngine {
+  const engine = Matter.Engine.create();
+  engine.gravity.y = 1.05;
+
+  const runner = Matter.Runner.create();
+  Matter.Runner.run(runner, engine);
+
+  // Walls
+  const walls = [
+    Matter.Bodies.rectangle(params.width / 2, params.height + 30, params.width, 60, {
+      isStatic: true,
+      label: "floor",
+    }),
+    Matter.Bodies.rectangle(-30, params.height / 2, 60, params.height, {
+      isStatic: true,
+      label: "wall-left",
+    }),
+    Matter.Bodies.rectangle(params.width + 30, params.height / 2, 60, params.height, {
+      isStatic: true,
+      label: "wall-right",
+    }),
+  ];
+  Matter.Composite.add(engine.world, walls);
+
+  let nextId = 1;
+
+  const bodies: { body: Matter.Body; level: number; createdAt: number }[] = [];
+
+  function spawn(level: number, x: number) {
+    const r = radiusForLevel(level);
+    const b = Matter.Bodies.circle(
+      Math.max(r + 6, Math.min(params.width - r - 6, x)),
+      40,
+      r,
+      {
+        restitution: 0.15,
+        friction: 0.02,
+        density: 0.0025,
+        label: `coin:${level}`,
+      }
+    ) as Matter.Body & { _id?: string; _level?: number };
+    b._id = `c${nextId++}`;
+    b._level = level;
+
+    Matter.Composite.add(engine.world, b);
+    bodies.push({ body: b, level, createdAt: Date.now() });
+    return b;
+  }
+
+  // Start with level-1 preview drop
+  spawn(1, params.width / 2);
+
+  // Collision handling: merge same level
+  Matter.Events.on(engine, "collisionStart", (evt) => {
+    for (const pair of evt.pairs) {
+      const a = pair.bodyA as any;
+      const b = pair.bodyB as any;
+
+      const aLevel = a?._level;
+      const bLevel = b?._level;
+
+      if (!aLevel || !bLevel) continue;
+      if (aLevel !== bLevel) continue;
+
+      // prevent merging static walls
+      if (String(a.label).startsWith("wall") || String(b.label).startsWith("wall")) continue;
+      if (a.label === "floor" || b.label === "floor") continue;
+
+      // Merge
+      const fromLevel = aLevel;
+      const toLevel = aLevel + 1;
+
+      // remove both bodies from world
+      Matter.Composite.remove(engine.world, a);
+      Matter.Composite.remove(engine.world, b);
+
+      // remove from tracked bodies
+      const idxA = bodies.findIndex((x) => x.body === a);
+      if (idxA >= 0) bodies.splice(idxA, 1);
+      const idxB = bodies.findIndex((x) => x.body === b);
+      if (idxB >= 0) bodies.splice(idxB, 1);
+
+      // spawn merged body at average position
+      const mx = (a.position.x + b.position.x) / 2;
+      const my = (a.position.y + b.position.y) / 2;
+
+      const merged = spawn(toLevel, mx);
+      Matter.Body.setPosition(merged, { x: mx, y: my });
+
+      const coin = getCoinByLevel(toLevel);
+      const scoreInc = coin?.score || Math.max(1, toLevel * 2);
+
+      params.onMerge(fromLevel, toLevel, scoreInc);
+
+      break; // avoid double-processing in same tick
+    }
   });
 
-  function isMobile() {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  }
+  // Game over check
+  Matter.Events.on(engine, "afterUpdate", () => {
+    for (const item of bodies) {
+      const y = item.body.position.y;
+      const vy = item.body.velocity.y;
 
-  const coins: GameCoin[] = [];
-  let mergeCount = 0;
-  let highestLevel = 1;
-  let isGameOver = false;
-  let isMerging = false;
-
-  // Duvarlar
-  const leftWall = Bodies.rectangle(
-    -WALL_THICKNESS / 2,
-    GAME_HEIGHT / 2,
-    WALL_THICKNESS,
-    GAME_HEIGHT * 2,
-    { isStatic: true, friction: 0.1 }
-  );
-
-  const rightWall = Bodies.rectangle(
-    GAME_WIDTH + WALL_THICKNESS / 2,
-    GAME_HEIGHT / 2,
-    WALL_THICKNESS,
-    GAME_HEIGHT * 2,
-    { isStatic: true, friction: 0.1 }
-  );
-
-  const floor = Bodies.rectangle(
-    GAME_WIDTH / 2,
-    GAME_HEIGHT + WALL_THICKNESS / 2,
-    GAME_WIDTH + WALL_THICKNESS * 2,
-    WALL_THICKNESS,
-    { isStatic: true, friction: 0.1 }
-  );
-
-  World.add(engine.world, [leftWall, rightWall, floor]);
-
-  // Rastgele level seçimi (1-3 arası)
-  function getRandomStartLevel(): number {
-    const rand = Math.random();
-    if (rand < 0.6) return 1;      // %60 level 1
-    if (rand < 0.9) return 2;      // %30 level 2
-    return 3;                       // %10 level 3
-  }
-
-  function addCoin(x: number, level?: number) {
-    if (isGameOver) return;
-
-    // Game over kontrolü
-    for (const coin of coins) {
-      const coinData = getCoinByLevel(coin.level);
-      if (!coinData) continue;
-      if (coin.body.position.y - coinData.radius < DANGER_LINE) {
-        isGameOver = true;
-        return;
+      // only if coin is above danger line and nearly stopped (stack)
+      if (y < params.dangerLine && Math.abs(vy) < 0.35) {
+        params.onGameOver();
+        break;
       }
     }
-
-    const nextLevel = level ?? getRandomStartLevel();
-    const coinData = getCoinByLevel(nextLevel);
-    if (!coinData) return;
-
-    const clampedX = Math.max(
-      coinData.radius,
-      Math.min(GAME_WIDTH - coinData.radius, x)
-    );
-
-    const body = Bodies.circle(clampedX, coinData.radius, coinData.radius, {
-      restitution: 0.3,
-      friction: 0.1,
-      density: 0.002,
-      label: `coin-${nextLevel}`,
-    });
-
-    (body as any).coinLevel = nextLevel;
-
-    World.add(engine.world, body);
-    coins.push({ body, level: nextLevel });
-  }
-
-  function checkMerges() {
-    if (isMerging) return;
-    isMerging = true;
-
-    for (let i = 0; i < coins.length; i++) {
-      for (let j = i + 1; j < coins.length; j++) {
-        if (coins[i].level !== coins[j].level) continue;
-        if (coins[i].level >= 8) continue;
-
-        const a = coins[i].body;
-        const b = coins[j].body;
-
-        const dx = a.position.x - b.position.x;
-        const dy = a.position.y - b.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const coinData = getCoinByLevel(coins[i].level);
-        if (!coinData) continue;
-
-        if (dist <= coinData.radius * 2 + 5) {
-          const newLevel = coins[i].level + 1;
-          const newCoinData = getCoinByLevel(newLevel);
-          if (!newCoinData) continue;
-
-          const newX = (a.position.x + b.position.x) / 2;
-          const newY = (a.position.y + b.position.y) / 2;
-
-          World.remove(engine.world, a);
-          World.remove(engine.world, b);
-
-          const removeI = coins.findIndex((c) => c.body === a);
-          const removeJ = coins.findIndex((c) => c.body === b);
-          if (removeJ > removeI) {
-            coins.splice(removeJ, 1);
-            coins.splice(removeI, 1);
-          } else {
-            coins.splice(removeI, 1);
-            coins.splice(removeJ, 1);
-          }
-
-          const newBody = Bodies.circle(newX, newY, newCoinData.radius, {
-            restitution: 0.3,
-            friction: 0.1,
-            density: 0.002,
-            label: `coin-${newLevel}`,
-          });
-          (newBody as any).coinLevel = newLevel;
-
-          World.add(engine.world, newBody);
-          coins.push({ body: newBody, level: newLevel });
-
-          mergeCount++;
-          if (newLevel > highestLevel) {
-            highestLevel = newLevel;
-          }
-
-          onMerge(newLevel - 1, newLevel);
-
-          isMerging = false;
-          checkMerges();
-          return;
-        }
-      }
-    }
-
-    isMerging = false;
-  }
-
-  function update() {
-    Engine.update(engine, 1000 / 60);
-    checkMerges();
-  }
-
-  function destroy() {
-    Engine.clear(engine);
-  }
+  });
 
   return {
-    engine,
-    coins,
-    get mergeCount() {
-      return mergeCount;
+    dropCoin(x: number) {
+      spawn(1, x);
     },
-    get highestLevel() {
-      return highestLevel;
+    getBodies() {
+      return bodies.map((b) => {
+        const r = radiusForLevel(b.level);
+        return {
+          id: (b.body as any)._id || "",
+          level: b.level,
+          x: b.body.position.x,
+          y: b.body.position.y,
+          radius: r,
+        };
+      });
     },
-    get isGameOver() {
-      return isGameOver;
+    destroy() {
+      Matter.Runner.stop(runner);
+      Matter.Engine.clear(engine);
+      Matter.Composite.clear(engine.world, false);
     },
-    addCoin,
-    update,
-    destroy,
   };
 }
