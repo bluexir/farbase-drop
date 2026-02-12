@@ -1,23 +1,42 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: { ignoreBuildErrors: false },
-  eslint: { ignoreDuringBuilds: false },
+  reactStrictMode: true,
 
-  async headers() {
-    return [
+  images: {
+    remotePatterns: [
       {
-        source: "/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              "frame-ancestors 'self' https://warpcast.com https://client.warpcast.com https://*.warpcast.com https://farcaster.xyz https://client.farcaster.xyz https://*.farcaster.xyz;",
-          },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
+        protocol: "https",
+        hostname: "i.imgur.com",
       },
-    ];
+      {
+        protocol: "https",
+        hostname: "cdn.discordapp.com",
+      },
+      {
+        protocol: "https",
+        hostname: "imagedelivery.net",
+      },
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "pbs.twimg.com",
+      },
+      {
+        protocol: "https",
+        hostname: "i.seadn.io",
+      },
+      {
+        protocol: "https",
+        hostname: "api.neynar.com",
+      },
+    ],
   },
 };
 
