@@ -9,7 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@farcaster/miniapp-sdk": "^0.1.11",
+    "@farcaster/miniapp-sdk": "^0.2.3",
+    "@farcaster/quick-auth": "^0.0.8",
     "@upstash/redis": "^1.34.5",
     "ethers": "^6.13.4",
     "matter-js": "^0.20.0",
