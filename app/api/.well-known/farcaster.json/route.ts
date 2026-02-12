@@ -1,30 +1,29 @@
 import { NextResponse } from "next/server";
 import { Wallet } from "ethers";
 
-// Bu route Node runtime ister (Buffer + imza üretimi)
 export const runtime = "nodejs";
 
 export async function GET() {
   const domain = "farbase-drop.vercel.app";
   const fid = 429973;
-  
+
   // Vercel env'den mnemonic al
   const mnemonic = process.env.FARCASTER_DEVELOPER_MNEMONIC;
-  
+
   if (!mnemonic) {
     return NextResponse.json(
-      { 
+      {
         error: "MNEMONIC not configured",
-        message: "Add FARCASTER_DEVELOPER_MNEMONIC to Vercel env variables" 
+        message: "Add FARCASTER_DEVELOPER_MNEMONIC to Vercel env variables",
       },
       { status: 500 }
     );
   }
 
   try {
-    // Farcaster JSON Signatures (JFS) - FIP-208 formatı:
+    // Farcaster JSON Signatures (JFS):
     // signingInput = `${base64url(header)}.${base64url(payload)}`
-    // signature = signMessage(signingInput) -> hex -> base64url :contentReference[oaicite:1]{index=1}
+    // signature = signMessage(signingInput) -> hex -> base64url
 
     const wallet = Wallet.fromPhrase(mnemonic.trim());
     const custodyAddress = await wallet.getAddress();
@@ -39,8 +38,12 @@ export async function GET() {
       domain,
     };
 
-    const header = Buffer.from(JSON.stringify(headerObj), "utf-8").toString("base64url");
-    const payload = Buffer.from(JSON.stringify(payloadObj), "utf-8").toString("base64url");
+    const header = Buffer.from(JSON.stringify(headerObj), "utf-8").toString(
+      "base64url"
+    );
+    const payload = Buffer.from(JSON.stringify(payloadObj), "utf-8").toString(
+      "base64url"
+    );
 
     const signingInput = `${header}.${payload}`;
     const sigHex = await wallet.signMessage(signingInput); // 0x...
@@ -50,7 +53,7 @@ export async function GET() {
       accountAssociation: {
         header,
         payload,
-        signature
+        signature,
       },
       frame: {
         version: "1",
@@ -61,18 +64,17 @@ export async function GET() {
         buttonTitle: "Play Tournament",
         splashImageUrl: `https://${domain}/splash.png`,
         splashBackgroundColor: "#000000",
-        webhookUrl: `https://${domain}/api/webhook`
-      }
+        webhookUrl: `https://${domain}/api/webhook`,
+      },
     };
-    
+
     return NextResponse.json(manifest, {
       headers: {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=3600"
-      }
+        "Cache-Control": "public, max-age=3600",
+      },
     });
-    
   } catch (error) {
     console.error("Frame manifest error:", error);
     return NextResponse.json(
