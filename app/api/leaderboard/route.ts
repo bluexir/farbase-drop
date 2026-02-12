@@ -15,28 +15,29 @@ export async function GET(request: NextRequest) {
 
     if (mode !== "practice" && mode !== "tournament") {
       return NextResponse.json(
-        { error: "Invalid mode. Must be 'practice' or 'tournament'" },
+        { error: "Invalid mode. Must be practice or tournament" },
         { status: 400 }
       );
     }
 
+    const fid = fidParam ? Number(fidParam) : null;
+
     const top5 = await getTop5(mode);
     const enriched = await enrichWithProfiles(top5);
 
-    // If fid provided, also return player's personal best
-    let playerBest = null;
-    if (fidParam) {
-      const fid = Number(fidParam);
-      if (fid > 0) {
-        playerBest = await getPlayerBestScore(mode, fid);
-      }
-    }
+    const playerBest = fid ? await getPlayerBestScore(mode, fid) : null;
 
-    return NextResponse.json({ data: enriched, playerBest }, { status: 200 });
-  } catch (error) {
-    console.error("Leaderboard error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch leaderboard", details: String(error) },
+      {
+        data: enriched,
+        playerBest,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Leaderboard fetch error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch leaderboard" },
       { status: 500 }
     );
   }
