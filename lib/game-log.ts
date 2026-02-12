@@ -1,112 +1,103 @@
-/**
- * Oyun olay logları - Skor doğrulama için
- * Client'tan gelen logları sunucuda replay ederek skoru doğrular
- */
+export type GameEvent =
+  | {
+      t: number;
+      type: "start";
+      mode: "practice" | "tournament";
+      fid: number;
+      sessionId: string;
+    }
+  | {
+      t: number;
+      type: "drop";
+      x: number;
+      score: number;
+      merges: number;
+      highest: number;
+    }
+  | {
+      t: number;
+      type: "merge";
+      fromLevel: number;
+      toLevel: number;
+      scoreInc: number;
+      score: number;
+      merges: number;
+      highest: number;
+    }
+  | {
+      t: number;
+      type: "game_over";
+      score: number;
+      merges: number;
+      highest: number;
+    };
 
-export interface GameEvent {
-  type: 'DROP' | 'MERGE';
-  timestamp: number;
-  data: {
-    x?: number;
-    level?: number;
-    fromLevel?: number;
-    toLevel?: number;
-  };
-}
-
-export interface GameLog {
-  sessionId: string;
+export type GameLog = {
   fid: number;
-  mode: 'practice' | 'tournament';
-  startTime: number;
-  endTime?: number;
+  sessionId: string;
+  mode: "practice" | "tournament";
+  startedAt: number;
+  endedAt: number | null;
   events: GameEvent[];
-  finalScore?: number;
-  mergeCount?: number;
-  highestLevel?: number;
-}
+};
 
-export function calculateScoreFromLog(log: GameLog): {
-  score: number;
-  mergeCount: number;
-  highestLevel: number;
-  isValid: boolean;
-} {
-  let mergeCount = 0;
-  let highestLevel = 1;
-  
-  for (const event of log.events) {
-    if (event.type === 'MERGE') {
-      mergeCount++;
-      if (event.data.toLevel && event.data.toLevel > highestLevel) {
-        highestLevel = event.data.toLevel;
-      }
+export function validateGameLog(
+  log: GameLog,
+  expected: {
+    fid: number;
+    sessionId: string;
+    mode: "practice" | "tournament";
+    score: number;
+    mergeCount: number;
+    highestLevel: number;
+  }
+): { ok: true } | { ok: false; reason: string } {
+  if (!log || typeof log !== "object") {
+    return { ok: false, reason: "log missing" };
+  }
+  if (log.fid !== expected.fid) return { ok: false, reason: "fid mismatch" };
+  if (log.sessionId !== expected.sessionId)
+    return { ok: false, reason: "sessionId mismatch" };
+  if (log.mode !== expected.mode) return { ok: false, reason: "mode mismatch" };
+
+  if (!Array.isArray(log.events) || log.events.length < 2) {
+    return { ok: false, reason: "events missing" };
+  }
+
+  const start = log.events.find((e) => e.type === "start");
+  const end = log.events.find((e) => e.type === "game_over");
+  if (!start) return { ok: false, reason: "start missing" };
+  if (!end) return { ok: false, reason: "game_over missing" };
+
+  // Recompute score/merges/highest from events
+  let score = 0;
+  let merges = 0;
+  let highest = 1;
+
+  for (const e of log.events) {
+    if (e.type === "merge") {
+      score += e.scoreInc;
+      merges += 1;
+      highest = Math.max(highest, e.toLevel);
     }
   }
 
-  const scoreValue = getScoreValueByLevel(highestLevel);
-  const score = scoreValue * mergeCount;
+  // Must match reported
+  if (score !== expected.score)
+    return { ok: false, reason: "score mismatch" };
+  if (merges !== expected.mergeCount)
+    return { ok: false, reason: "mergeCount mismatch" };
+  if (highest !== expected.highestLevel)
+    return { ok: false, reason: "highestLevel mismatch" };
 
-  const isValid = 
-    log.finalScore === score &&
-    log.mergeCount === mergeCount &&
-    log.highestLevel === highestLevel;
-
-  return { score, mergeCount, highestLevel, isValid };
-}
-
-function getScoreValueByLevel(level: number): number {
-  const values: Record<number, number> = {
-    1: 1,
-    2: 2,
-    3: 4,
-    4: 8,
-    5: 16,
-    6: 32,
-    7: 64,
-    8: 128,
-  };
-  return values[level] || 1;
-}
-
-export function validateGameLog(log: GameLog): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  if (!log.sessionId) errors.push('Missing sessionId');
-  if (!log.fid) errors.push('Missing fid');
-  if (!log.mode || !['practice', 'tournament'].includes(log.mode)) {
-    errors.push('Invalid mode');
+  // time sanity
+  if (typeof log.startedAt !== "number" || typeof start.t !== "number") {
+    return { ok: false, reason: "start time invalid" };
   }
-  if (!Array.isArray(log.events)) errors.push('Invalid events array');
-  if (log.events.length === 0) errors.push('Empty events');
-  
-  if (log.startTime && log.endTime) {
-    const duration = log.endTime - log.startTime;
-    if (duration > 30 * 60 * 1000) {
-      errors.push('Game duration too long');
-    }
-    if (duration < 5000) {
-      errors.push('Game duration too short');
-    }
+  if (typeof end.t !== "number") {
+    return { ok: false, reason: "end time invalid" };
   }
+  if (end.t < start.t) return { ok: false, reason: "time reversed" };
 
-  let lastTimestamp = log.startTime;
-  for (const event of log.events) {
-    if (event.timestamp < lastTimestamp) {
-      errors.push('Event timestamp out of order');
-      break;
-    }
-    lastTimestamp = event.timestamp;
-    
-    if (event.type === 'DROP') {
-      if (typeof event.data.x !== 'number' || event.data.x < 0 || event.data.x > 424) {
-        errors.push('Invalid drop position');
-      }
-      if (!event.data.level || event.data.level < 1 || event.data.level > 3) {
-        errors.push('Invalid drop level');
-      }
-    }
-  }
-
-  return { valid: errors.length === 0, errors };
+  return { ok: true };
 }
