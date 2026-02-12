@@ -49,13 +49,11 @@ export async function GET(request: Request) {
     const wallet = new ethers.Wallet(privateKey, provider);
     const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, wallet);
 
-    // Pool kontrolü
     const poolBalance = await contract.getUSDCPool();
-    if (poolBalance === 0n) {
+    if (poolBalance === BigInt(0)) {
       return NextResponse.json({ message: "No pool to distribute" }, { status: 200 });
     }
 
-    // Tournament Top 5
     const top5 = await getTop5Tournament();
 
     const winners: string[] = [
@@ -63,13 +61,12 @@ export async function GET(request: Request) {
       top5[1]?.address || ethers.ZeroAddress,
       top5[2]?.address || ethers.ZeroAddress,
       top5[3]?.address || ethers.ZeroAddress,
-      top5[4]?.address || ethers.ZeroAddress, // HATA BURADAYDI: ends -> ethers yapıldı
+      top5[4]?.address || ethers.ZeroAddress,
     ];
 
     const weekNumber = getWeekNumber();
     const isFourthWeek = weekNumber % 4 === 0;
 
-    // 4. hafta — havuza kalan %10'ları da dağıt
     const tx = await contract.distributePrizes(winners);
     const receipt = await tx.wait();
 
