@@ -17,7 +17,10 @@ const miniAppEmbed = {
 
 export const metadata: Metadata = {
   title: "FarBase Drop",
-  description: "Coinleri birleştir, skor yaz, ödül kazandır",
+  description: "Skill-Based Crypto Merge on Base",
+  other: {
+    "fc:miniapp": JSON.stringify(miniAppEmbed),
+  },
 };
 
 export default function RootLayout({
@@ -27,27 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-        />
-        <meta name="fc:miniapp" content={JSON.stringify(miniAppEmbed)} />
-        <meta name="fc:frame" content={JSON.stringify(miniAppEmbed)} />
-      </head>
-      <body
-        style={{
-          margin: 0,
-          padding: 0,
-          height: "100vh",
-          width: "100vw",
-          overflow: "hidden",
-          background: "#000",
-          color: "#fff",
-        }}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
