@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { Wallet } from "ethers";
+
+// Bu route Node runtime ister (Buffer + imza üretimi)
+export const runtime = "nodejs";
 
 export async function GET() {
   const domain = "farbase-drop.vercel.app";
@@ -18,17 +22,35 @@ export async function GET() {
   }
 
   try {
-    // NOT: Gerçek imza oluşturma için @farcaster/hub-nodejs kurulumu gerekli
-    // Şimdilik placeholder değerler - kullanıma hazır olduktan sonra 
-    // Farcaster'dan alınan gerçek imza ile değiştirilecek
-    
+    // Farcaster JSON Signatures (JFS) - FIP-208 formatı:
+    // signingInput = `${base64url(header)}.${base64url(payload)}`
+    // signature = signMessage(signingInput) -> hex -> base64url :contentReference[oaicite:1]{index=1}
+
+    const wallet = Wallet.fromPhrase(mnemonic.trim());
+    const custodyAddress = await wallet.getAddress();
+
+    const headerObj = {
+      fid,
+      type: "custody",
+      key: custodyAddress,
+    };
+
+    const payloadObj = {
+      domain,
+    };
+
+    const header = Buffer.from(JSON.stringify(headerObj), "utf-8").toString("base64url");
+    const payload = Buffer.from(JSON.stringify(payloadObj), "utf-8").toString("base64url");
+
+    const signingInput = `${header}.${payload}`;
+    const sigHex = await wallet.signMessage(signingInput); // 0x...
+    const signature = Buffer.from(sigHex.slice(2), "hex").toString("base64url");
+
     const manifest = {
       accountAssociation: {
-        // Bu alanlar FID 429973 private key'i ile imzalanmalı
-        // Şimdilik örnek değerler, sonra elle veya otomatik doldurulacak
-        header: "GENERATED_FROM_MNEMONIC_HEADER",
-        payload: "GENERATED_FROM_MNEMONIC_PAYLOAD", 
-        signature: "GENERATED_FROM_MNEMONIC_SIGNATURE"
+        header,
+        payload,
+        signature
       },
       frame: {
         version: "1",
