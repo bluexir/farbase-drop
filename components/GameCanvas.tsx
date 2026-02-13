@@ -201,7 +201,7 @@ export default function GameCanvas({
       for (const event of gameLogRef.current.events) {
         if (event.type === "MERGE" && event.data.toLevel) {
           const coinData = getCoinByLevel(event.data.toLevel);
-          if (coinData) cumulativeScore += coinData.scoreValue;
+          if (coinData) cumulativeScore += coinData.score;
         }
       }
       gameLogRef.current.finalScore = cumulativeScore;
