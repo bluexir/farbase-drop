@@ -12,267 +12,353 @@ import { getCoinByLevel } from "@/lib/coins";
 import { GameEvent, GameLog } from "@/lib/game-log";
 
 interface GameCanvasProps {
-  onMerge: (fromLevel: number, toLevel: number, scoreIncrement: number) => void;
-  onGameOver: (
-    finalScore: number,
-    finalMerges: number,
-    finalHighest: number,
-    gameLog: GameLog
-  ) => void;
-  mode: "practice" | "tournament";
+  onMerge: (fromLevel: number, toLevel: number) => void;
+  onGameOver: (mergeCount: number, highestLevel: number, gameLog: GameLog) => void;
   gameStarted: boolean;
   fid: number;
+  mode: "practice" | "tournament";
   sessionId: string;
 }
 
 export default function GameCanvas({
   onMerge,
   onGameOver,
-  mode,
   gameStarted,
   fid,
+  mode,
   sessionId,
 }: GameCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<PhysicsEngine | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const dropXRef = useRef(GAME_WIDTH / 2);
+  const isDraggingRef = useRef(false);
+  const gameOverCalledRef = useRef(false);
 
-  // Game stats refs
-  const scoreRef = useRef(0);
-  const mergesRef = useRef(0);
-  const highestRef = useRef(1);
-  const overRef = useRef(false);
+  const mergeCountRef = useRef(0);
+  const highestLevelRef = useRef(1);
 
-  // Game log (anti-cheat + analytics)
-  const logRef = useRef<GameLog>({
-    fid,
+  const nextLevelRef = useRef(1);
+
+  const gameLogRef = useRef<GameLog>({
     sessionId,
+    fid,
     mode,
-    startedAt: Date.now(),
-    endedAt: null,
+    startTime: Date.now(),
     events: [],
   });
 
-  const pushEvent = useCallback((e: GameEvent) => {
-    logRef.current.events.push(e);
+  const coinImagesRef = useRef<Map<number, HTMLImageElement>>(new Map());
+
+  const pickNextLevel = useCallback(() => {
+    const rand = Math.random();
+    if (rand < 0.6) return 1;
+    if (rand < 0.9) return 2;
+    return 3;
   }, []);
 
-  const handleMergeInternal = useCallback(
-    (fromLevel: number, toLevel: number, scoreIncrement: number) => {
-      scoreRef.current += scoreIncrement;
-      mergesRef.current += 1;
-      highestRef.current = Math.max(highestRef.current, toLevel);
+  useEffect(() => {
+    const loadImages = async () => {
+      const levels = Array.from({ length: 8 }, (_, i) => i + 1);
 
-      pushEvent({
-        t: Date.now(),
-        type: "merge",
-        fromLevel,
-        toLevel,
-        scoreInc: scoreIncrement,
-        score: scoreRef.current,
-        merges: mergesRef.current,
-        highest: highestRef.current,
+      const loadPromises = levels.map((level) => {
+        const coinData = getCoinByLevel(level);
+        if (!coinData?.iconUrl) return Promise.resolve();
+
+        return new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            coinImagesRef.current.set(level, img);
+            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`Failed to load image: ${coinData.iconUrl}`);
+            resolve();
+          };
+          img.src = coinData.iconUrl;
+        });
       });
 
-      onMerge(fromLevel, toLevel, scoreIncrement);
+      await Promise.all(loadPromises);
+    };
+
+    loadImages();
+  }, []);
+
+  const addEvent = useCallback((type: GameEvent["type"], data: GameEvent["data"]) => {
+    const event: GameEvent = {
+      type,
+      timestamp: Date.now(),
+      data,
+    };
+    gameLogRef.current.events.push(event);
+  }, []);
+
+  const drawCoin = useCallback(
+    (ctx: CanvasRenderingContext2D, x: number, y: number, level: number) => {
+      const coinData = getCoinByLevel(level);
+      if (!coinData) return;
+
+      const img = coinImagesRef.current.get(level);
+      const radius = coinData.radius;
+
+      ctx.save();
+
+      ctx.shadowColor = coinData.glowColor;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = coinData.color;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      if (img && img.complete && !coinData.isSponsor) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = "#fff";
+        const fontSize = coinData.isSponsor ? radius * 0.35 : radius * 0.55;
+        ctx.font = `bold ${Math.max(8, fontSize)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(coinData.symbol, x, y);
+      }
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.restore();
     },
-    [onMerge, pushEvent]
+    []
   );
 
-  const handleGameOverInternal = useCallback(() => {
-    if (overRef.current) return;
-    overRef.current = true;
+  const drawPreview = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      const coinData = getCoinByLevel(nextLevelRef.current);
+      if (!coinData) return;
 
-    logRef.current.endedAt = Date.now();
-    pushEvent({
-      t: Date.now(),
-      type: "game_over",
-      score: scoreRef.current,
-      merges: mergesRef.current,
-      highest: highestRef.current,
-    });
+      const x = Math.max(
+        coinData.radius,
+        Math.min(GAME_WIDTH - coinData.radius, dropXRef.current)
+      );
 
-    onGameOver(
-      scoreRef.current,
-      mergesRef.current,
-      highestRef.current,
-      logRef.current
-    );
-  }, [onGameOver, pushEvent]);
+      ctx.beginPath();
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.lineWidth = 1;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, GAME_HEIGHT);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-  // Reset state on mount / key change
-  useEffect(() => {
-    scoreRef.current = 0;
-    mergesRef.current = 0;
-    highestRef.current = 1;
-    overRef.current = false;
+      ctx.globalAlpha = 0.5;
+      drawCoin(ctx, x, coinData.radius, nextLevelRef.current);
+      ctx.globalAlpha = 1;
+    },
+    [drawCoin]
+  );
 
-    logRef.current = {
-      fid,
-      sessionId,
-      mode,
-      startedAt: Date.now(),
-      endedAt: null,
-      events: [],
-    };
+  const handleMergeInternal = useCallback(
+    (fromLevel: number, toLevel: number) => {
+      addEvent("MERGE", { fromLevel, toLevel });
 
-    pushEvent({
-      t: Date.now(),
-      type: "start",
-      mode,
-      fid,
-      sessionId,
-    });
-  }, [fid, sessionId, mode, pushEvent]);
+      mergeCountRef.current += 1;
+      if (toLevel > highestLevelRef.current) {
+        highestLevelRef.current = toLevel;
+      }
 
-  // Initialize physics engine
-  useEffect(() => {
+      onMerge(fromLevel, toLevel);
+    },
+    [onMerge, addEvent]
+  );
+
+  const gameLoop = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const engine = createPhysicsEngine({
-      width: GAME_WIDTH,
-      height: GAME_HEIGHT,
-      dangerLine: DANGER_LINE,
-      onMerge: handleMergeInternal,
-      onGameOver: handleGameOverInternal,
-    });
-
-    engineRef.current = engine;
-
-    return () => {
-      engine.destroy();
-      engineRef.current = null;
-    };
-  }, [handleMergeInternal, handleGameOverInternal]);
-
-  // Input handler: drop a coin at x position
-  const dropCoin = useCallback((x: number) => {
     const engine = engineRef.current;
-    if (!engine || overRef.current) return;
-
-    engine.dropCoin(x);
-
-    pushEvent({
-      t: Date.now(),
-      type: "drop",
-      x,
-      score: scoreRef.current,
-      merges: mergesRef.current,
-      highest: highestRef.current,
-    });
-  }, [pushEvent]);
-
-  // Pointer events
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const handlePointerDown = (e: PointerEvent) => {
-      if (!gameStarted) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      dropCoin(x);
-    };
-
-    canvas.addEventListener("pointerdown", handlePointerDown);
-    return () => canvas.removeEventListener("pointerdown", handlePointerDown);
-  }, [dropCoin, gameStarted]);
-
-  // Render loop
-  useEffect(() => {
-    let raf = 0;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !engine) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const render = () => {
-      const engine = engineRef.current;
-      if (!engine) return;
+    engine.update();
 
-      // Clear
-      ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    if (engine.isGameOver && !gameOverCalledRef.current) {
+      gameOverCalledRef.current = true;
 
-      // Background gradient
-      const bg = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-      bg.addColorStop(0, "#050510");
-      bg.addColorStop(1, "#000000");
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      gameLogRef.current.endTime = Date.now();
+      gameLogRef.current.mergeCount = mergeCountRef.current;
+      gameLogRef.current.highestLevel = highestLevelRef.current;
 
-      // Draw danger line
-      ctx.strokeStyle = "rgba(255,0,0,0.35)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      ctx.moveTo(0, DANGER_LINE);
-      ctx.lineTo(GAME_WIDTH, DANGER_LINE);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Draw bodies (coins)
-      const bodies = engine.getBodies();
-      for (const b of bodies) {
-        const coin = getCoinByLevel(b.level);
-        const color = coin?.color || "#C3A634";
-        const r = b.radius;
-
-        // Shadow
-        ctx.beginPath();
-        ctx.fillStyle = "rgba(0,0,0,0.35)";
-        ctx.arc(b.x + 2, b.y + 3, r, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Coin
-        ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Border
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "rgba(255,255,255,0.2)";
-        ctx.stroke();
-
-        // Symbol
-        ctx.fillStyle = "rgba(0,0,0,0.65)";
-        ctx.font = `bold ${Math.max(10, r * 0.7)}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(coin?.symbol || "?", b.x, b.y);
+      // Kümülatif skor: log event'lerinden hesapla (metadata tutarlılığı)
+      let cumulativeScore = 0;
+      for (const event of gameLogRef.current.events) {
+        if (event.type === "MERGE" && event.data.toLevel) {
+          const coinData = getCoinByLevel(event.data.toLevel);
+          if (coinData) cumulativeScore += coinData.scoreValue;
+        }
       }
+      gameLogRef.current.finalScore = cumulativeScore;
 
-      raf = requestAnimationFrame(render);
-    };
+      onGameOver(mergeCountRef.current, highestLevelRef.current, gameLogRef.current);
+      return;
+    }
 
-    raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.fillStyle = "#0a0a0f";
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // danger line
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(239,68,68,0.4)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 4]);
+    ctx.moveTo(0, DANGER_LINE);
+    ctx.lineTo(GAME_WIDTH, DANGER_LINE);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (!engine.isGameOver) {
+      drawPreview(ctx);
+    }
+
+    for (const coin of engine.coins) {
+      drawCoin(ctx, coin.body.position.x, coin.body.position.y, coin.level);
+    }
+
+    animFrameRef.current = requestAnimationFrame(gameLoop);
+  }, [drawCoin, drawPreview, onGameOver]);
+
+  const getX = useCallback((e: React.TouchEvent | React.MouseEvent): number => {
+    const canvas = canvasRef.current;
+    if (!canvas) return GAME_WIDTH / 2;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = GAME_WIDTH / rect.width;
+
+    if ("touches" in e && e.touches.length > 0) {
+      return (e.touches[0].clientX - rect.left) * scaleX;
+    }
+    if ("clientX" in e) {
+      return (e.clientX - rect.left) * scaleX;
+    }
+    return GAME_WIDTH / 2;
   }, []);
 
+  const handleStart = useCallback(
+    (e: React.TouchEvent | React.MouseEvent) => {
+      if (!gameStarted || engineRef.current?.isGameOver) return;
+      if (e.cancelable) e.preventDefault();
+      isDraggingRef.current = true;
+      dropXRef.current = getX(e);
+    },
+    [gameStarted, getX]
+  );
+
+  const handleMove = useCallback(
+    (e: React.TouchEvent | React.MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      if (e.cancelable) e.preventDefault();
+      dropXRef.current = getX(e);
+    },
+    [getX]
+  );
+
+  const handleEnd = useCallback(
+    (e: React.TouchEvent | React.MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      if (e.cancelable) e.preventDefault();
+      isDraggingRef.current = false;
+
+      if (engineRef.current && !engineRef.current.isGameOver) {
+        const x = dropXRef.current;
+        const level = nextLevelRef.current;
+        addEvent("DROP", { x, level });
+        engineRef.current.addCoin(x, level);
+        nextLevelRef.current = pickNextLevel();
+      }
+    },
+    [pickNextLevel, addEvent]
+  );
+
+  useEffect(() => {
+    if (!gameStarted) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (engineRef.current?.isGameOver) return;
+
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        dropXRef.current = Math.max(15, dropXRef.current - 20);
+      }
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        dropXRef.current = Math.min(GAME_WIDTH - 15, dropXRef.current + 20);
+      }
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        if (engineRef.current) {
+          const x = dropXRef.current;
+          const level = nextLevelRef.current;
+          addEvent("DROP", { x, level });
+          engineRef.current.addCoin(x, level);
+          nextLevelRef.current = pickNextLevel();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [gameStarted, pickNextLevel, addEvent]);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+
+    gameOverCalledRef.current = false;
+    mergeCountRef.current = 0;
+    highestLevelRef.current = 1;
+    nextLevelRef.current = pickNextLevel();
+
+    gameLogRef.current = {
+      sessionId,
+      fid,
+      mode,
+      startTime: Date.now(),
+      events: [],
+    };
+
+    engineRef.current = createPhysicsEngine(handleMergeInternal);
+    animFrameRef.current = requestAnimationFrame(gameLoop);
+
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      engineRef.current?.destroy();
+      engineRef.current = null;
+    };
+  }, [gameStarted, gameLoop, pickNextLevel, handleMergeInternal, fid, mode, sessionId]);
+
   return (
-    <div
+    <canvas
+      ref={canvasRef}
+      width={GAME_WIDTH}
+      height={GAME_HEIGHT}
+      onMouseDown={handleStart}
+      onMouseMove={handleMove}
+      onMouseUp={handleEnd}
+      onMouseLeave={handleEnd}
+      onTouchStart={handleStart}
+      onTouchMove={handleMove}
+      onTouchEnd={handleEnd}
       style={{
         width: "100%",
-        display: "flex",
-        justifyContent: "center",
-        paddingTop: 8,
+        height: "auto",
+        maxWidth: GAME_WIDTH,
+        touchAction: "none",
+        cursor: "crosshair",
       }}
-    >
-      <canvas
-        ref={canvasRef}
-        width={GAME_WIDTH}
-        height={GAME_HEIGHT}
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(0,0,0,0.6)",
-          touchAction: "none",
-          boxShadow: "0 0 30px rgba(0,243,255,0.15)",
-        }}
-      />
-    </div>
+    />
   );
 }
