@@ -39,7 +39,7 @@ async function fetchWithQuickAuth(url: string, init?: RequestInit) {
         Authorization: `Bearer ${token}`,
       },
     });
-  } catch {
+ } catch (_e) {
     return await fetch(url, init);
   }
 }
