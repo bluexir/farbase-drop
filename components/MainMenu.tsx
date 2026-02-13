@@ -40,7 +40,6 @@ async function fetchWithQuickAuth(url: string, init?: RequestInit) {
       },
     });
   } catch (_e) {
-    // Preview / non-farcaster: token yok - normal fetch dene
     return await fetch(url, init);
   }
 }
@@ -137,6 +136,7 @@ export default function MainMenu({
           alignItems: 'stretch',
         }}
       >
+        {/* Header */}
         <div
           style={{
             display: 'flex',
@@ -158,36 +158,13 @@ export default function MainMenu({
           >
             FarBase Drop
           </h1>
-          <button
-            onClick={() => setShowHowToPlay(true)}
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'rgba(255,255,255,0.1)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '50%',
-              width: '28px',
-              height: '28px',
-              color: '#fff',
-              fontSize: '0.85rem',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ?
-          </button>
         </div>
 
         <p
           style={{
             color: '#666',
             fontSize: '0.8rem',
-            marginBottom: '20px',
+            marginBottom: '6px',
             textAlign: 'center',
             letterSpacing: '0.05em',
           }}
@@ -195,6 +172,26 @@ export default function MainMenu({
           Skill-Based Crypto Merge &bull; Base Mainnet
         </p>
 
+        {/* How to Play */}
+        <button
+          onClick={() => setShowHowToPlay(true)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'rgba(255,255,255,0.4)',
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            padding: '4px 0',
+            marginBottom: '16px',
+            textAlign: 'center',
+            textDecoration: 'underline',
+            textUnderlineOffset: '3px',
+          }}
+        >
+          How to Play
+        </button>
+
+        {/* Admin Panel */}
         {isAdmin && onAdmin && (
           <button
             onClick={onAdmin}
@@ -222,6 +219,7 @@ export default function MainMenu({
             gap: '16px',
           }}
         >
+          {/* Practice */}
           <div
             onClick={practiceClickable ? onPractice : undefined}
             style={{
@@ -279,6 +277,7 @@ export default function MainMenu({
             </p>
           </div>
 
+          {/* Tournament */}
           <div
             onClick={onTournament}
             style={{
@@ -328,6 +327,7 @@ export default function MainMenu({
             </p>
           </div>
 
+          {/* Leaderboard */}
           <div
             onClick={onLeaderboard}
             style={{
@@ -354,10 +354,11 @@ export default function MainMenu({
               </span>
             </div>
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
-              This week's rankings - Live updates
+              This week&apos;s rankings - Live updates
             </p>
           </div>
 
+          {/* Prize Pool */}
           <div
             style={{
               background: 'rgba(255,255,255,0.05)',
@@ -395,6 +396,7 @@ export default function MainMenu({
             </p>
           </div>
 
+          {/* Recommended Apps */}
           {recommendedApps.length > 0 && (
             <div
               style={{
@@ -405,7 +407,20 @@ export default function MainMenu({
                 padding: '18px',
               }}
             >
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                <img
+                  src="/Recommended.icon.png"
+                  alt=""
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
+                    objectFit: 'cover',
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
                 <span style={{ fontSize: '1rem', fontWeight: 900, color: '#7c3aed' }}>
                   Recommended Apps
                 </span>
@@ -420,17 +435,53 @@ export default function MainMenu({
                     rel="noreferrer"
                     style={{
                       textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
                       background: 'rgba(0,0,0,0.35)',
                       border: '1px solid rgba(124,58,237,0.35)',
                       borderRadius: '12px',
                       padding: '12px',
                       color: '#fff',
+                      transition: 'border-color 0.2s ease',
                     }}
                   >
-                    <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
-                    <div style={{ color: '#aaa', fontSize: '0.75rem', marginTop: 4 }}>
-                      {app.description}
+                    {app.icon && (
+                      <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>
+                        {app.icon}
+                      </span>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
+                      <div
+                        style={{
+                          color: '#aaa',
+                          fontSize: '0.72rem',
+                          marginTop: 3,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {app.description}
+                      </div>
                     </div>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        background: 'rgba(124,58,237,0.3)',
+                        border: '1px solid rgba(124,58,237,0.5)',
+                        borderRadius: '8px',
+                        padding: '4px 10px',
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        color: '#c4b5fd',
+                      }}
+                    >
+                      Open
+                    </span>
                   </a>
                 ))}
               </div>
