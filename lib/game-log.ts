@@ -1,103 +1,114 @@
-export type GameEvent =
-  | {
-      t: number;
-      type: "start";
-      mode: "practice" | "tournament";
-      fid: number;
-      sessionId: string;
-    }
-  | {
-      t: number;
-      type: "drop";
-      x: number;
-      score: number;
-      merges: number;
-      highest: number;
-    }
-  | {
-      t: number;
-      type: "merge";
-      fromLevel: number;
-      toLevel: number;
-      scoreInc: number;
-      score: number;
-      merges: number;
-      highest: number;
-    }
-  | {
-      t: number;
-      type: "game_over";
-      score: number;
-      merges: number;
-      highest: number;
-    };
+import { getCoinByLevel } from "./coins";
 
-export type GameLog = {
-  fid: number;
+export interface GameEvent {
+  type: "DROP" | "MERGE";
+  timestamp: number;
+  data: {
+    x?: number;
+    level?: number;
+    fromLevel?: number;
+    toLevel?: number;
+  };
+}
+
+export interface GameLog {
   sessionId: string;
+  fid: number;
   mode: "practice" | "tournament";
-  startedAt: number;
-  endedAt: number | null;
+  startTime: number;
+  endTime?: number;
   events: GameEvent[];
-};
+  mergeCount?: number;
+  highestLevel?: number;
+  finalScore?: number;
+}
 
-export function validateGameLog(
-  log: GameLog,
-  expected: {
-    fid: number;
-    sessionId: string;
-    mode: "practice" | "tournament";
-    score: number;
-    mergeCount: number;
-    highestLevel: number;
-  }
-): { ok: true } | { ok: false; reason: string } {
-  if (!log || typeof log !== "object") {
-    return { ok: false, reason: "log missing" };
-  }
-  if (log.fid !== expected.fid) return { ok: false, reason: "fid mismatch" };
-  if (log.sessionId !== expected.sessionId)
-    return { ok: false, reason: "sessionId mismatch" };
-  if (log.mode !== expected.mode) return { ok: false, reason: "mode mismatch" };
+export interface CalculatedScore {
+  score: number;
+  mergeCount: number;
+  highestLevel: number;
+}
 
-  if (!Array.isArray(log.events) || log.events.length < 2) {
-    return { ok: false, reason: "events missing" };
-  }
-
-  const start = log.events.find((e) => e.type === "start");
-  const end = log.events.find((e) => e.type === "game_over");
-  if (!start) return { ok: false, reason: "start missing" };
-  if (!end) return { ok: false, reason: "game_over missing" };
-
-  // Recompute score/merges/highest from events
+/**
+ * Server-side skor doğrulama: Game log'daki MERGE event'lerini oynatarak
+ * kümülatif skoru hesaplar.
+ *
+ * Kümülatif formül: Her merge → oluşan yeni coin'in scoreValue'su eklenir.
+ * Örnek: DOGE+DOGE→SHIB = +2, ETH+ETH→BTC = +64
+ * Toplam = tüm merge puanlarının toplamı
+ */
+export function calculateScoreFromLog(log: GameLog): CalculatedScore {
   let score = 0;
-  let merges = 0;
-  let highest = 1;
+  let mergeCount = 0;
+  let highestLevel = 1;
 
-  for (const e of log.events) {
-    if (e.type === "merge") {
-      score += e.scoreInc;
-      merges += 1;
-      highest = Math.max(highest, e.toLevel);
+  for (const event of log.events) {
+    if (event.type === "MERGE" && event.data.toLevel) {
+      mergeCount++;
+      const toLevel = event.data.toLevel;
+
+      if (toLevel > highestLevel) {
+        highestLevel = toLevel;
+      }
+
+      const coinData = getCoinByLevel(toLevel);
+      if (coinData) {
+        score += coinData.scoreValue;
+      }
     }
   }
 
-  // Must match reported
-  if (score !== expected.score)
-    return { ok: false, reason: "score mismatch" };
-  if (merges !== expected.mergeCount)
-    return { ok: false, reason: "mergeCount mismatch" };
-  if (highest !== expected.highestLevel)
-    return { ok: false, reason: "highestLevel mismatch" };
+  return { score, mergeCount, highestLevel };
+}
 
-  // time sanity
-  if (typeof log.startedAt !== "number" || typeof start.t !== "number") {
-    return { ok: false, reason: "start time invalid" };
-  }
-  if (typeof end.t !== "number") {
-    return { ok: false, reason: "end time invalid" };
-  }
-  if (end.t < start.t) return { ok: false, reason: "time reversed" };
+/**
+ * Game log yapısal doğrulama.
+ * Sahte/bozuk log'ları reddeder.
+ */
+export function validateGameLog(log: GameLog): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
 
-  return { ok: true };
+  if (!log) {
+    errors.push("Missing game log");
+    return { valid: false, errors };
+  }
+
+  if (!log.sessionId) errors.push("Missing sessionId");
+  if (!log.fid || log.fid <= 0) errors.push("Invalid fid");
+  if (!log.mode || (log.mode !== "practice" && log.mode !== "tournament")) {
+    errors.push("Invalid mode");
+  }
+  if (!log.startTime || log.startTime <= 0) errors.push("Invalid startTime");
+  if (!Array.isArray(log.events)) errors.push("Missing events array");
+
+  if (log.events && log.events.length > 0) {
+    const firstEvent = log.events[0];
+    const lastEvent = log.events[log.events.length - 1];
+
+    if (firstEvent.timestamp < log.startTime - 1000) {
+      errors.push("First event before start time");
+    }
+
+    // Süre kontrolü: 500ms'den kısa oyun şüpheli
+    const duration = lastEvent.timestamp - log.startTime;
+    if (duration < 500) {
+      errors.push("Game duration too short");
+    }
+
+    // Merge event'ler mantıklı mı
+    for (const event of log.events) {
+      if (event.type === "MERGE") {
+        if (
+          !event.data.fromLevel ||
+          !event.data.toLevel ||
+          event.data.toLevel !== event.data.fromLevel + 1
+        ) {
+          errors.push("Invalid merge event");
+          break;
+        }
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
