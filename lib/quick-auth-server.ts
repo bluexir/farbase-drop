@@ -38,7 +38,7 @@ function getVerifyDomain(request: Request): string {
       // "farbase-drop.vercel.app" → "farbase-drop.vercel.app"
       const parsed = envUrl.includes("://") ? new URL(envUrl).host : envUrl;
       if (parsed) return parsed;
-    } catch {
+   } catch (_e) {
       // geçersiz URL — fallback'e devam
     }
   }
