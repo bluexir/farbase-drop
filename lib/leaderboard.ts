@@ -127,7 +127,7 @@ async function fetchProfiles(fids: number[]) {
       map[u.fid] = u;
     }
     return map;
-  } catch {
+ } catch (_e) {
     return {};
   }
 }
