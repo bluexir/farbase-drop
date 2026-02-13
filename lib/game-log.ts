@@ -53,7 +53,7 @@ export function calculateScoreFromLog(log: GameLog): CalculatedScore {
 
       const coinData = getCoinByLevel(toLevel);
       if (coinData) {
-        score += coinData.scoreValue;
+score += coinData.score;
       }
     }
   }
