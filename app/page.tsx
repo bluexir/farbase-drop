@@ -60,7 +60,7 @@ export default function Home() {
   // Kümülatif skor: her merge'de oluşan coin'in scoreValue'su eklenir
   const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
     const coinData = getCoinByLevel(toLevel);
-    const increment = coinData?.scoreValue || 0;
+    const increment = coinData?.score || 0;
     setScore((prev) => prev + increment);
     setMergeCount((prev) => prev + 1);
     setHighestLevel((prev) => Math.max(prev, toLevel));
