@@ -50,7 +50,7 @@ export async function getResetInSeconds(
     const now = Date.now();
     const diff = Math.floor((resetAt - now) / 1000);
     return diff > 0 ? diff : 0;
-  } catch {
+  } catch (_e) {
     return null;
   }
 }
