@@ -80,7 +80,7 @@ export async function getTop5(mode: "practice" | "tournament") {
     .map((v) => {
       try {
         return JSON.parse(v) as LeaderboardEntry;
-      } catch {
+     } catch (_e) {
         return null;
       }
     })
