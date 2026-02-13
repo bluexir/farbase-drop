@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getCoinByLevel } from "@/lib/coins";
 
-interface EnrichedEntry {
+interface LeaderboardEntry {
   fid: number;
   address: string;
   score: number;
@@ -19,62 +19,49 @@ interface LeaderboardProps {
   onBack: () => void;
 }
 
-const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32", "#888", "#888"];
-const RANK_EMOJI = ["🥇", "🥈", "🥉", "4.", "5."];
-
 export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
   const [tab, setTab] = useState<"tournament" | "practice">("tournament");
-  const [tournamentData, setTournamentData] = useState<EnrichedEntry[]>([]);
-  const [practiceData, setPracticeData] = useState<EnrichedEntry[]>([]);
-  const [playerBest, setPlayerBest] = useState<{
-    practice: number | null;
-    tournament: number | null;
-  }>({ practice: null, tournament: null });
+  const [tournamentData, setTournamentData] = useState<LeaderboardEntry[]>([]);
+  const [practiceData, setPracticeData] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [tRes, pRes] = await Promise.all([
-          fetch(`/api/leaderboard?mode=tournament&fid=${fid}`),
-          fetch(`/api/leaderboard?mode=practice&fid=${fid}`),
+        const [tournamentRes, practiceRes] = await Promise.all([
+          fetch("/api/leaderboard?mode=tournament"),
+          fetch("/api/leaderboard?mode=practice"),
         ]);
 
-        const tJson = await tRes.json();
-        const pJson = await pRes.json();
+        const tournament = await tournamentRes.json();
+        const practice = await practiceRes.json();
 
-        setTournamentData(tJson.data || []);
-        setPracticeData(pJson.data || []);
-        setPlayerBest({
-          tournament: tJson.playerBest?.score ?? null,
-          practice: pJson.playerBest?.score ?? null,
-        });
+        setTournamentData(tournament.data || []);
+        setPracticeData(practice.data || []);
       } catch (e) {
-        console.error("Leaderboard fetch error:", e);
+        console.error("Failed to fetch leaderboard:", e);
       } finally {
         setLoading(false);
       }
     }
 
     fetchData();
-  }, [fid]);
+  }, []);
 
   const data = tab === "tournament" ? tournamentData : practiceData;
-  const myBest =
-    tab === "tournament" ? playerBest.tournament : playerBest.practice;
+
+  const rankColors = ["#FFD700", "#C0C0C0", "#CD7F32", "#aaa", "#aaa"];
 
   return (
     <div
       style={{
         height: "100vh",
         width: "100%",
-        background:
-          "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
+        background: "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         padding: "24px 16px",
-        overflowY: "auto",
       }}
     >
       {/* Header */}
@@ -100,9 +87,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
         >
           ← Back
         </button>
-        <span
-          style={{ color: "#fff", fontWeight: "bold", fontSize: "1.1rem" }}
-        >
+        <span style={{ color: "#fff", fontWeight: "bold", fontSize: "1.1rem" }}>
           📊 Leaderboard
         </span>
         <div style={{ width: "60px" }} />
@@ -132,6 +117,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
             fontSize: "0.85rem",
             fontWeight: "bold",
             cursor: "pointer",
+            transition: "background 0.2s",
           }}
         >
           🏆 Tournament
@@ -148,6 +134,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
             fontSize: "0.85rem",
             fontWeight: "bold",
             cursor: "pointer",
+            transition: "background 0.2s",
           }}
         >
           🎮 Practice
@@ -157,11 +144,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
       {/* List */}
       <div style={{ width: "100%", maxWidth: "424px" }}>
         {loading ? (
-          <p
-            style={{ color: "#555", textAlign: "center", fontSize: "0.85rem" }}
-          >
-            Loading...
-          </p>
+          <p style={{ color: "#555", textAlign: "center", fontSize: "0.85rem" }}>Loading...</p>
         ) : data.length === 0 ? (
           <div
             style={{
@@ -176,191 +159,135 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
             </p>
           </div>
         ) : (
-          <>
-            {data.map((entry, index) => {
-              const coin = getCoinByLevel(entry.highestLevel);
-              const isYou = entry.fid === fid;
-              return (
-                <div
-                  key={entry.fid}
+          data.map((entry, index) => {
+            const coin = getCoinByLevel(entry.highestLevel);
+            const isYou = entry.fid === fid;
+            const name = entry.displayName || entry.username || `Player ${index + 1}`;
+
+            return (
+              <div
+                key={entry.fid}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  background: isYou
+                    ? "rgba(0,243,255,0.08)"
+                    : "rgba(255,255,255,0.05)",
+                  border: isYou
+                    ? "1px solid #00f3ff"
+                    : index === 0
+                    ? "1px solid #FFD700"
+                    : "1px solid #333",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  marginBottom: "8px",
+                  gap: "12px",
+                }}
+              >
+                {/* Rank */}
+                <span
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    background: isYou
-                      ? "rgba(0,243,255,0.08)"
-                      : "rgba(255,255,255,0.05)",
-                    border: isYou
-                      ? "1px solid #00f3ff"
-                      : index === 0
-                      ? "1px solid #FFD700"
-                      : "1px solid #222",
-                    borderRadius: "12px",
-                    padding: "12px 14px",
-                    marginBottom: "8px",
-                    gap: "10px",
+                    fontSize: "1.2rem",
+                    fontWeight: "bold",
+                    color: rankColors[index] || "#aaa",
+                    minWidth: "28px",
+                    textAlign: "center",
                   }}
                 >
-                  {/* Rank */}
-                  <span
-                    style={{
-                      fontSize: index < 3 ? "1.3rem" : "1rem",
-                      fontWeight: "bold",
-                      color: RANK_COLORS[index],
-                      minWidth: "32px",
-                      textAlign: "center",
-                    }}
-                  >
-                    {RANK_EMOJI[index]}
-                  </span>
+                  {index + 1}.
+                </span>
 
-                  {/* PFP */}
+                {/* Profile Picture */}
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    flexShrink: 0,
+                    background: "#222",
+                  }}
+                >
                   {entry.pfpUrl ? (
                     <img
                       src={entry.pfpUrl}
-                      alt=""
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "2px solid #333",
-                        flexShrink: 0,
-                      }}
+                      alt={name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   ) : (
                     <div
                       style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "50%",
-                        background: "#333",
+                        width: "100%",
+                        height: "100%",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: "0.7rem",
-                        color: "#888",
-                        flexShrink: 0,
+                        color: "#555",
+                        fontSize: "0.75rem",
+                        fontWeight: "bold",
                       }}
                     >
                       ?
                     </div>
                   )}
+                </div>
 
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      <p
-                        style={{
-                          color: "#fff",
-                          fontSize: "0.85rem",
-                          fontWeight: "bold",
-                          margin: 0,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {entry.displayName || `FID: ${entry.fid}`}
-                      </p>
-                      {isYou && (
-                        <span
-                          style={{
-                            background: "#00f3ff",
-                            color: "#000",
-                            fontSize: "0.6rem",
-                            fontWeight: 800,
-                            padding: "1px 6px",
-                            borderRadius: "8px",
-                            flexShrink: 0,
-                          }}
-                        >
-                          You
-                        </span>
-                      )}
-                    </div>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <p
                       style={{
-                        color: "#555",
-                        fontSize: "0.7rem",
-                        margin: "2px 0 0 0",
+                        color: "#fff",
+                        fontSize: "0.85rem",
+                        fontWeight: "bold",
+                        margin: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      {entry.username ? `@${entry.username}` : ""} ·{" "}
-                      {entry.mergeCount} merges
+                      {name}
                     </p>
+                    {isYou && (
+                      <span
+                        style={{
+                          background: "#00f3ff",
+                          color: "#000",
+                          fontSize: "0.6rem",
+                          fontWeight: 900,
+                          padding: "1px 5px",
+                          borderRadius: "6px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        You
+                      </span>
+                    )}
                   </div>
+                  {entry.username && (
+                    <p style={{ color: "#555", fontSize: "0.7rem", margin: "2px 0 0 0" }}>
+                      @{entry.username}
+                    </p>
+                  )}
+                </div>
 
-                  {/* Coin + Score */}
+                {/* Best Coin + Score */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      flexShrink: 0,
+                      width: "24px",
+                      height: "24px",
+                      borderRadius: "50%",
+                      backgroundColor: coin?.color || "#C3A634",
                     }}
-                  >
-                    <div
-                      style={{
-                        width: "20px",
-                        height: "20px",
-                        borderRadius: "50%",
-                        backgroundColor: coin?.color || "#C3A634",
-                      }}
-                    />
-                    <span
-                      style={{
-                        color: "#eab308",
-                        fontWeight: "bold",
-                        fontSize: "0.95rem",
-                      }}
-                    >
-                      {entry.score}
-                    </span>
-                  </div>
+                  />
+                  <span style={{ color: "#eab308", fontWeight: "bold", fontSize: "0.9rem" }}>
+                    {entry.score}
+                  </span>
                 </div>
-              );
-            })}
-
-            {/* Your best (if not in top 5) */}
-            {myBest !== null && !data.some((e) => e.fid === fid) && (
-              <div
-                style={{
-                  marginTop: "12px",
-                  background: "rgba(0,243,255,0.06)",
-                  border: "1px solid rgba(0,243,255,0.3)",
-                  borderRadius: "12px",
-                  padding: "12px 16px",
-                  textAlign: "center",
-                }}
-              >
-                <p
-                  style={{
-                    color: "#888",
-                    fontSize: "0.75rem",
-                    margin: 0,
-                  }}
-                >
-                  Your best this week
-                </p>
-                <p
-                  style={{
-                    color: "#eab308",
-                    fontWeight: "bold",
-                    fontSize: "1.1rem",
-                    margin: "4px 0 0 0",
-                  }}
-                >
-                  {myBest}
-                </p>
               </div>
-            )}
-          </>
+            );
+          })
         )}
       </div>
     </div>
