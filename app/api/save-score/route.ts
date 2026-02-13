@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
+import { Redis } from "@upstash/redis";
 import { saveScore, getPlayerBestScore, LeaderboardEntry } from "@/lib/leaderboard";
 import { calculateScoreFromLog, validateGameLog, GameLog } from "@/lib/game-log";
 import { requireQuickAuthUser, isInvalidTokenError } from "@/lib/quick-auth-server";
-import { usePracticeAttempt, useTournamentAttempt } from "@/lib/attempts";
-import { isAdmin } from "@/lib/admin";
+import { consumeAttempt, getRemainingAttempts } from "@/lib/attempts";
 
 export const dynamic = "force-dynamic";
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
+
+function checkAdmin(fid: number): boolean {
+  const adminFid = Number(process.env.ADMIN_FID || "0");
+  return adminFid > 0 && fid === adminFid;
+}
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
     }
 
-    // Game log doğrulama
+    // Game log dogrulama
     const logValidation = validateGameLog(gameLog as GameLog);
     if (!logValidation.valid) {
       console.error("Invalid game log:", logValidation.errors);
@@ -41,10 +51,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Server-side kümülatif skor hesaplama
+    // Server-side kumulatif skor hesaplama
     const calculated = calculateScoreFromLog(gameLog as GameLog);
 
-    // Skor doğrulama (%5 tolerans)
+    // Skor dogrulama (%5 tolerans)
     const scoreDiff = Math.abs(calculated.score - score);
     const scoreTolerance = Math.max(score * 0.05, 1);
 
@@ -65,35 +75,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Stats validation failed" }, { status: 400 });
     }
 
-    // Attempt düşürme (admin hariç)
-    const admin = isAdmin(fid);
-    let remaining: number | null = null;
+    // Attempt dusurme
+    const admin = checkAdmin(fid);
+    const attemptResult = await consumeAttempt(redis, mode, fid, admin);
 
-    if (!admin) {
-      if (mode === "practice") {
-        const result = await usePracticeAttempt(fid);
-        if (!result.success) {
-          return NextResponse.json(
-            { error: "No practice attempts remaining", resetInSeconds: result.resetInSeconds },
-            { status: 429 }
-          );
-        }
-        remaining = result.remaining;
-      } else {
-        const result = await useTournamentAttempt(fid);
-        if (!result.success) {
-          return NextResponse.json(
-            { error: "No tournament attempts remaining" },
-            { status: 429 }
-          );
-        }
-        remaining = result.remaining;
-      }
+    if (!attemptResult.ok) {
+      return NextResponse.json(
+        { error: attemptResult.error },
+        { status: 429 }
+      );
     }
 
     // Mevcut en iyi skor
     const previousBest = await getPlayerBestScore(mode, fid);
-    const newBest = calculated.score > (previousBest || 0);
+    const newBest = calculated.score > (previousBest?.score || 0);
 
     // Skoru kaydet
     const entry: LeaderboardEntry = {
@@ -106,6 +101,9 @@ export async function POST(request: Request) {
     };
 
     await saveScore(mode, entry);
+
+    // Kalan hak
+    const remaining = await getRemainingAttempts(redis, mode, fid, admin);
 
     return NextResponse.json(
       {
