@@ -39,7 +39,8 @@ async function fetchWithQuickAuth(url: string, init?: RequestInit) {
         Authorization: `Bearer ${token}`,
       },
     });
- } catch (_e) {
+  } catch (_e) {
+    // Preview / non-farcaster: token yok - normal fetch dene
     return await fetch(url, init);
   }
 }
@@ -136,7 +137,6 @@ export default function MainMenu({
           alignItems: 'stretch',
         }}
       >
-        {/* Header with How to Play */}
         <div
           style={{
             display: 'flex',
@@ -192,10 +192,9 @@ export default function MainMenu({
             letterSpacing: '0.05em',
           }}
         >
-          Skill-Based Crypto Merge • Base Mainnet
+          Skill-Based Crypto Merge &bull; Base Mainnet
         </p>
 
-        {/* Admin shortcut */}
         {isAdmin && onAdmin && (
           <button
             onClick={onAdmin}
@@ -211,7 +210,7 @@ export default function MainMenu({
               marginBottom: '14px',
             }}
           >
-            ⚙️ Admin Panel
+            Admin Panel
           </button>
         )}
 
@@ -223,7 +222,6 @@ export default function MainMenu({
             gap: '16px',
           }}
         >
-          {/* Practice */}
           <div
             onClick={practiceClickable ? onPractice : undefined}
             style={{
@@ -256,7 +254,7 @@ export default function MainMenu({
               }}
             >
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#00f3ff' }}>
-                🎮 Practice
+                Practice
               </span>
               <span
                 style={{
@@ -268,20 +266,19 @@ export default function MainMenu({
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? "∞" : `${practiceAttempts}/3`}
+                {isAdmin ? "unlimited" : practiceAttempts + "/3"}
               </span>
             </div>
 
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
               {isAdmin
-                ? "Admin test • Unlimited attempts"
+                ? "Admin test - Unlimited attempts"
                 : practiceAttempts > 0
-                  ? "Daily free attempts • No rewards"
-                  : `No attempts left • Resets in ${practiceResetIn ? formatCountdown(practiceResetIn) : "soon"}`}
+                  ? "Daily free attempts - No rewards"
+                  : "No attempts left - Resets in " + (practiceResetIn ? formatCountdown(practiceResetIn) : "soon")}
             </p>
           </div>
 
-          {/* Tournament */}
           <div
             onClick={onTournament}
             style={{
@@ -311,7 +308,7 @@ export default function MainMenu({
               }}
             >
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#ff00ff' }}>
-                🏆 Tournament
+                Tournament
               </span>
               <span
                 style={{
@@ -323,15 +320,14 @@ export default function MainMenu({
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? "∞" : `${tournamentAttempts}/3`}
+                {isAdmin ? "unlimited" : tournamentAttempts + "/3"}
               </span>
             </div>
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
-              1 USDC entry • Top 5 win • 3 attempts per entry
+              1 USDC entry - Top 5 win - 3 attempts per entry
             </p>
           </div>
 
-          {/* Leaderboard */}
           <div
             onClick={onLeaderboard}
             style={{
@@ -354,15 +350,14 @@ export default function MainMenu({
           >
             <div style={{ marginBottom: '8px' }}>
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#fff' }}>
-                📊 Leaderboard
+                Leaderboard
               </span>
             </div>
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
-              This week&apos;s rankings • Live updates
+              This week's rankings - Live updates
             </p>
           </div>
 
-          {/* Prize Pool */}
           <div
             style={{
               background: 'rgba(255,255,255,0.05)',
@@ -375,7 +370,7 @@ export default function MainMenu({
           >
             <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#eab308' }}>
-                💰 Prize Pool
+                Prize Pool
               </span>
               <span
                 style={{
@@ -392,15 +387,14 @@ export default function MainMenu({
             </div>
 
             <div style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: 6 }}>
-              ${prizePool} USDC
+              {"$" + prizePool + " USDC"}
             </div>
 
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
-              Weekly distribution • Top 5 winners
+              Weekly distribution - Top 5 winners
             </p>
           </div>
 
-          {/* Recommended Apps */}
           {recommendedApps.length > 0 && (
             <div
               style={{
@@ -413,13 +407,13 @@ export default function MainMenu({
             >
               <div style={{ marginBottom: '12px' }}>
                 <span style={{ fontSize: '1rem', fontWeight: 900, color: '#7c3aed' }}>
-                  ✨ Recommended Apps
+                  Recommended Apps
                 </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {recommendedApps.map((app, i) => (
-                  
+                  <a
                     key={i}
                     href={app.url}
                     target="_blank"
@@ -443,12 +437,10 @@ export default function MainMenu({
             </div>
           )}
 
-          {/* Footer space */}
           <div style={{ height: 18 }} />
         </div>
       </div>
 
-      {/* How to Play Modal */}
       {showHowToPlay && <HowToPlay onClose={() => setShowHowToPlay(false)} />}
     </div>
   );
