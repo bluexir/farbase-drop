@@ -44,6 +44,7 @@ export default function HowToPlay({ onClose }: HowToPlayProps) {
         justifyContent: "center",
         zIndex: 9999,
         padding: "18px",
+        overflowY: "auto",
       }}
       onClick={onClose}
     >
@@ -51,6 +52,8 @@ export default function HowToPlay({ onClose }: HowToPlayProps) {
         style={{
           width: "100%",
           maxWidth: "420px",
+          maxHeight: "85vh",
+          overflowY: "auto",
           background:
             "radial-gradient(circle at top, rgba(124,58,237,0.20), rgba(0,0,0,0.95))",
           borderRadius: "18px",
