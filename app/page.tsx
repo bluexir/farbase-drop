@@ -48,6 +48,20 @@ export default function Home() {
         const context = await sdk.context;
         setFid(context.user.fid);
         await sdk.actions.ready();
+
+        // Admin kontrolu — menu acilir acilmaz admin butonu gozuksun
+        try {
+          const { token } = await sdk.quickAuth.getToken();
+          const res = await fetch("/api/remaining-attempts?mode=practice", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = (await res.json()) as AttemptsResponse;
+            if (data.isAdmin) setIsAdmin(true);
+          }
+        } catch (_e) {
+          // Token alinamazsa admin kontrolu atlanir
+        }
       } catch (e) {
         console.error("SDK init error:", e);
       } finally {
@@ -57,7 +71,7 @@ export default function Home() {
     init();
   }, []);
 
-  // Kümülatif skor: her merge'de oluşan coin'in scoreValue'su eklenir
+  // Kumulatif skor: her merge'de olusan coin'in score'u eklenir
   const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
     const coinData = getCoinByLevel(toLevel);
     const increment = coinData?.score || 0;
@@ -70,7 +84,7 @@ export default function Home() {
     async (finalMerges: number, finalHighest: number, gameLog: GameLog) => {
       setGameOver(true);
 
-      // Kümülatif skor: game log'dan hesapla (server ile aynı formül)
+      // Kumulatif skor: game log'dan hesapla (server ile ayni formul)
       const calculated = calculateScoreFromLog(gameLog);
       const finalScore = calculated.score;
 
@@ -82,7 +96,7 @@ export default function Home() {
       setRemainingAttempts(null);
       setIsNewBest(false);
 
-      // Practice modunda wallet bağlı olmayabilir
+      // Practice modunda wallet bagli olmayabilir
       const currentAddress = address || "0x0000000000000000000000000000000000000000";
 
       try {
@@ -129,9 +143,9 @@ export default function Home() {
         process.env.NEXT_PUBLIC_APP_URL ||
         "https://farbase-drop.vercel.app";
 
-      const text = `🪙 I just scored ${score} points on FarBase Drop! Highest coin: ${
+      const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
-      } 🔥\n\nPlay now: ${miniappUrl}`;
+      }\n\nPlay now: ${miniappUrl}`;
 
       await sdk.actions.composeCast({
         text,
@@ -160,12 +174,11 @@ export default function Home() {
       setCurrentMode(mode);
 
       if (mode === "practice") {
-        // Practice: attempt kontrolü MainMenu'de zaten yapılıyor
         resetGameStateAndStart("practice");
         return;
       }
 
-      // Tournament: önce admin/attempt kontrolü
+      // Tournament: admin/attempt kontrolu
       let admin = false;
       let hasAttempts = false;
       try {
@@ -200,7 +213,7 @@ export default function Home() {
           params: [{ chainId: "0x2105" }],
         });
 
-        // Admin: ödeme yok, direkt entry
+        // Admin: odeme yok, direkt entry
         if (admin) {
           await sdk.quickAuth.fetch("/api/create-entry", {
             method: "POST",
@@ -211,13 +224,13 @@ export default function Home() {
           return;
         }
 
-        // Zaten hakkı varsa direkt oyna
+        // Zaten hakki varsa direkt oyna
         if (hasAttempts) {
           resetGameStateAndStart("tournament");
           return;
         }
 
-        // Yeni entry satın al
+        // Yeni entry satin al
         const USDC_ADDRESS =
           process.env.NEXT_PUBLIC_USDC_ADDRESS ||
           "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -323,6 +336,7 @@ export default function Home() {
           alignItems: "center",
           justifyContent: "center",
           color: "#fff",
+          background: "#000",
         }}
       >
         Loading...
@@ -331,7 +345,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", background: "#000" }}>
       {screen === "menu" && (
         <MainMenu
           fid={fid}
@@ -347,7 +361,17 @@ export default function Home() {
       {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
 
       {(screen === "practice" || screen === "tournament") && (
-        <div style={{ padding: 16 }}>
+        <div
+          style={{
+            height: "100vh",
+            overflow: "hidden",
+            background: "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            padding: "8px 0 0 0",
+          }}
+        >
           {!gameOver ? (
             <>
               <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
