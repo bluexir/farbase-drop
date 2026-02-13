@@ -4,20 +4,22 @@ import { getCoinByLevel } from "@/lib/coins";
 
 interface GameOverProps {
   score: number;
-  mergeCount: number;
+  merges?: number;
+  mergeCount?: number;
   highestLevel: number;
   scoreSaved: boolean;
   scoreSaveError?: string | null;
-  mode: "practice" | "tournament";
-  remaining: number | null;
+  mode?: "practice" | "tournament";
+  remaining?: number | null;
   isNewBest?: boolean;
   onRestart: () => void;
-  onMenu: () => void;
+  onMenu?: () => void;
   onCast: () => void | Promise<void>;
 }
 
 export default function GameOver({
   score,
+  merges,
   mergeCount,
   highestLevel,
   scoreSaved,
@@ -31,181 +33,159 @@ export default function GameOver({
 }: GameOverProps) {
   const highestCoin = getCoinByLevel(highestLevel);
 
-  const modeLabel = mode === "tournament" ? "Tournament" : "Practice";
+  const mergesValue =
+    typeof merges === "number"
+      ? merges
+      : typeof mergeCount === "number"
+      ? mergeCount
+      : 0;
+
+  const canPlayAgain =
+    remaining === null || remaining === undefined || remaining > 0;
 
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 420,
-        margin: "0 auto",
-        padding: "16px",
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background:
-          "radial-gradient(circle at top, rgba(124,58,237,0.18), rgba(0,0,0,0.9))",
-        boxShadow: "0 0 30px rgba(255,0,255,0.12)",
-        color: "#fff",
-      }}
-    >
-      <div style={{ textAlign: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: "1.4rem", fontWeight: 900, marginBottom: 6 }}>
-          Game Over
-        </div>
-        <div style={{ color: "#888", fontSize: "0.8rem" }}>{modeLabel}</div>
-      </div>
+    <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-10 rounded-xl px-6">
+      <h2 className="text-3xl font-bold text-red-400 mb-2">Game Over</h2>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 10,
-          marginBottom: 14,
-        }}
-      >
-        <div
+      {mode ? (
+        <p className="text-xs text-gray-400 mb-5">
+          Mode: <span className="text-white font-semibold">{mode}</span>
+        </p>
+      ) : (
+        <div className="mb-5" />
+      )}
+
+      {isNewBest && (
+        <p
           style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 14,
-            padding: 12,
+            color: "#eab308",
+            fontSize: "0.8rem",
+            fontWeight: 900,
+            marginBottom: "12px",
+            textAlign: "center",
           }}
         >
-          <div style={{ color: "#888", fontSize: "0.72rem" }}>Score</div>
-          <div style={{ fontWeight: 900, fontSize: "1.15rem" }}>{score}</div>
-          {isNewBest && (
+          🏅 New Personal Best!
+        </p>
+      )}
+
+      <div className="w-full bg-gray-800 rounded-lg p-4 mb-4 space-y-3 max-w-md">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Score</span>
+          <span className="text-yellow-400 font-bold text-lg">{score}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-gray-400">Merges</span>
+          <span className="text-white font-bold text-lg">{mergesValue}</span>
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Best Coin</span>
+          <div className="flex items-center gap-2">
             <div
-              style={{
-                marginTop: 6,
-                display: "inline-block",
-                background: "rgba(0,243,255,0.15)",
-                border: "1px solid rgba(0,243,255,0.35)",
-                color: "#00f3ff",
-                padding: "2px 8px",
-                borderRadius: 999,
-                fontSize: "0.7rem",
-                fontWeight: 900,
-              }}
-            >
-              New Best!
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 14,
-            padding: 12,
-          }}
-        >
-          <div style={{ color: "#888", fontSize: "0.72rem" }}>Top coin</div>
-          <div style={{ fontWeight: 900, fontSize: "1.15rem" }}>
-            {highestCoin ? highestCoin.symbol : "?"}
-          </div>
-          <div style={{ color: "#666", fontSize: "0.75rem", marginTop: 2 }}>
-            Level {highestLevel}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 14,
-            padding: 12,
-            gridColumn: "1 / -1",
-          }}
-        >
-          <div style={{ color: "#888", fontSize: "0.72rem" }}>Merges</div>
-          <div style={{ fontWeight: 900, fontSize: "1.05rem" }}>
-            {mergeCount}
+              className="w-6 h-6 rounded-full"
+              style={{ backgroundColor: highestCoin?.color || "#C3A634" }}
+            />
+            <span className="text-white font-bold text-lg">
+              {highestCoin?.symbol || "DOGE"}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Save status */}
-      <div
+      {/* Score save durumu */}
+      <p
         style={{
-          background: "rgba(255,255,255,0.05)",
-          border: "1px solid rgba(255,255,255,0.10)",
-          borderRadius: 14,
-          padding: 12,
-          marginBottom: 14,
+          fontSize: "0.7rem",
+          color: scoreSaved ? "#00f3ff" : scoreSaveError ? "#ef4444" : "#555",
+          marginBottom: "12px",
         }}
       >
-        {scoreSaved ? (
-          <div style={{ color: "#22c55e", fontWeight: 900, fontSize: "0.85rem" }}>
-            ✅ Score saved!
-          </div>
-        ) : scoreSaveError ? (
-          <div style={{ color: "#f87171", fontWeight: 900, fontSize: "0.85rem" }}>
-            ❌ {scoreSaveError}
-          </div>
-        ) : (
-          <div style={{ color: "#888", fontSize: "0.85rem" }}>
-            Saving score...
-          </div>
-        )}
+        {scoreSaved
+          ? "✓ Score saved"
+          : scoreSaveError
+          ? `✗ ${scoreSaveError}`
+          : "Saving score..."}
+      </p>
 
-        {remaining !== null && (
-          <div style={{ color: "#888", marginTop: 6, fontSize: "0.78rem" }}>
-            Remaining attempts: <b style={{ color: "#fff" }}>{remaining}</b>
-          </div>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <button
-          onClick={onRestart}
+      {/* Kalan hak */}
+      {typeof remaining === "number" && (
+        <p
           style={{
-            width: "100%",
-            border: "none",
-            borderRadius: 14,
-            padding: "12px 14px",
-            fontWeight: 900,
-            cursor: "pointer",
-            background: "linear-gradient(90deg, #00f3ff, #7c3aed)",
-            color: "#000",
+            fontSize: "0.7rem",
+            color: remaining > 0 ? "#888" : "#ef4444",
+            marginBottom: "12px",
           }}
         >
-          Play again
-        </button>
+          {remaining > 0
+            ? `${remaining} attempt${remaining !== 1 ? "s" : ""} remaining`
+            : mode === "practice"
+            ? "No attempts left today — resets at UTC midnight"
+            : "No attempts left — buy a new entry to continue"}
+        </p>
+      )}
 
-        <button
-          onClick={onCast}
-          style={{
-            width: "100%",
-            border: "1px solid rgba(255,255,255,0.15)",
-            borderRadius: 14,
-            padding: "12px 14px",
-            fontWeight: 900,
-            cursor: "pointer",
-            background: "rgba(255,255,255,0.06)",
-            color: "#fff",
-          }}
-        >
-          Share score (cast)
-        </button>
+      {/* Cast */}
+      <button
+        onClick={() => void onCast()}
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          background: "linear-gradient(135deg, #7c3aed, #a855f7)",
+          border: "none",
+          borderRadius: "10px",
+          padding: "12px",
+          color: "#fff",
+          fontSize: "0.95rem",
+          fontWeight: "bold",
+          cursor: "pointer",
+          marginBottom: "10px",
+        }}
+      >
+        🗣️ Cast Score
+      </button>
 
+      {/* Play Again */}
+      <button
+        onClick={canPlayAgain ? onRestart : undefined}
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          background: canPlayAgain ? "#eab308" : "#555",
+          border: "none",
+          borderRadius: "10px",
+          padding: "12px",
+          color: canPlayAgain ? "#000" : "#999",
+          fontSize: "0.95rem",
+          fontWeight: "bold",
+          cursor: canPlayAgain ? "pointer" : "not-allowed",
+          marginBottom: onMenu ? "10px" : "0px",
+        }}
+      >
+        {canPlayAgain ? "Play Again" : "No Attempts Left"}
+      </button>
+
+      {/* Menu */}
+      {onMenu ? (
         <button
           onClick={onMenu}
           style={{
             width: "100%",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 14,
-            padding: "12px 14px",
-            fontWeight: 900,
-            cursor: "pointer",
-            background: "rgba(255,255,255,0.03)",
+            maxWidth: "420px",
+            background: "#111827",
+            border: "1px solid #374151",
+            borderRadius: "10px",
+            padding: "12px",
             color: "#fff",
+            fontSize: "0.95rem",
+            fontWeight: "bold",
+            cursor: "pointer",
           }}
         >
-          Back to menu
+          ⬅️ Back to Menu
         </button>
-      </div>
+      ) : null}
     </div>
   );
 }
