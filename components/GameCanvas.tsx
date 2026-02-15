@@ -358,7 +358,6 @@ export default function GameCanvas({
         touchAction: "none",
         cursor: "crosshair",
       }}
-      }}
     />
   );
 }
