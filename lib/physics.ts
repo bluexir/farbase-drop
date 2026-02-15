@@ -4,7 +4,7 @@ import { getCoinByLevel } from "./coins";
 const { Engine, World, Bodies } = Matter;
 
 // Farcaster Mini App spesifikasyonu: Web 424x695px
-export const GAME_WIDTH = 480;
+export const GAME_WIDTH = 560;
 export const GAME_HEIGHT = 695;
 export const DANGER_LINE = 35;
 
