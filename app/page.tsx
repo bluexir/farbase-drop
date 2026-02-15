@@ -360,7 +360,7 @@ export default function Home() {
         >
           {!gameOver ? (
             <>
-              <div style={{ flexShrink: 0, width: "100%", maxWidth: 424 }}>
+              <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
                 <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
               </div>
               <div
