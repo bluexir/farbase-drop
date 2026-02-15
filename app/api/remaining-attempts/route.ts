@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { requireQuickAuthUser, isInvalidTokenError } from "@/lib/quick-auth-server";
-import { getRemainingAttempts, getResetInSeconds } from "@/lib/attempts";
+import {
+  getPracticeRemaining,
+  getTournamentRemaining,
+  getPracticeResetInSeconds,
+  PRACTICE_LIMIT,
+  PRACTICE_LIMIT_ADMIN,
+  TOURNAMENT_ATTEMPTS_PER_ENTRY,
+} from "@/lib/attempts";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +20,6 @@ const redis = new Redis({
 function checkAdmin(fid: number): boolean {
   const adminFid = Number(process.env.ADMIN_FID || "0");
   return adminFid > 0 && fid === adminFid;
-}
-
-function nextUtcMidnightMs(nowMs: number): number {
-  const d = new Date(nowMs);
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth();
-  const day = d.getUTCDate();
-  return Date.UTC(y, m, day + 1, 0, 0, 0, 0);
 }
 
 export async function GET(req: NextRequest) {
@@ -37,29 +36,31 @@ export async function GET(req: NextRequest) {
 
     const admin = checkAdmin(fid);
 
-    if (admin) {
+    if (mode === "practice") {
+      const remaining = await getPracticeRemaining(redis, fid, admin);
+      const resetInSeconds = getPracticeResetInSeconds();
+      const limit = admin ? PRACTICE_LIMIT_ADMIN : PRACTICE_LIMIT;
+
       return NextResponse.json({
         mode,
-        remaining: 999,
-        limit: 3,
-        isAdmin: true,
-        resetAt: mode === "practice" ? nextUtcMidnightMs(Date.now()) : null,
-        resetInSeconds: mode === "practice"
-          ? Math.max(0, Math.floor((nextUtcMidnightMs(Date.now()) - Date.now()) / 1000))
-          : null,
+        remaining,
+        limit,
+        isAdmin: admin,
+        resetAt: Date.now() + resetInSeconds * 1000,
+        resetInSeconds,
       });
     }
 
-    const remaining = await getRemainingAttempts(redis, mode, fid, false);
-    const resetInSeconds = await getResetInSeconds(redis, mode, fid);
+    // Tournament
+    const remaining = await getTournamentRemaining(redis, fid);
 
     return NextResponse.json({
       mode,
       remaining,
-      limit: 3,
-      isAdmin: false,
+      limit: TOURNAMENT_ATTEMPTS_PER_ENTRY,
+      isAdmin: admin,
       resetAt: null,
-      resetInSeconds,
+      resetInSeconds: null,
     });
   } catch (e) {
     if (isInvalidTokenError(e)) {
