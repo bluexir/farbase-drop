@@ -352,9 +352,9 @@ export default function GameCanvas({
       onTouchStart={handleStart}
       onTouchMove={handleMove}
       onTouchEnd={handleEnd}
-     style={{
-        width: "100%",
-        height: "auto",
+   style={{
+        maxWidth: "100%",
+        maxHeight: "100%",
         touchAction: "none",
         cursor: "crosshair",
       }}
