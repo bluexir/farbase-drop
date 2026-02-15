@@ -178,15 +178,13 @@ export default function Home() {
         return;
       }
 
-      // Tournament: admin/attempt kontrolu
-      let admin = false;
+      // Tournament: attempt kontrolu
       let hasAttempts = false;
       try {
         const res = await sdk.quickAuth.fetch("/api/remaining-attempts?mode=tournament");
         const data = (await res.json()) as AttemptsResponse;
-        admin = !!data.isAdmin;
         hasAttempts = data.remaining > 0;
-        setIsAdmin(admin);
+        setIsAdmin(!!data.isAdmin);
       } catch (e) {
         console.error("Failed to check tournament status:", e);
       }
@@ -213,24 +211,13 @@ export default function Home() {
           params: [{ chainId: "0x2105" }],
         });
 
-        // Admin: odeme yok, direkt entry
-        if (admin) {
-          await sdk.quickAuth.fetch("/api/create-entry", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "tournament", address: currentAddress }),
-          });
-          resetGameStateAndStart("tournament");
-          return;
-        }
-
         // Zaten hakki varsa direkt oyna
         if (hasAttempts) {
           resetGameStateAndStart("tournament");
           return;
         }
 
-        // Yeni entry satin al
+        // Yeni entry satin al (admin dahil herkes oder)
         const USDC_ADDRESS =
           process.env.NEXT_PUBLIC_USDC_ADDRESS ||
           "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -369,21 +356,33 @@ export default function Home() {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            padding: "8px 0 0 0",
           }}
         >
           {!gameOver ? (
             <>
-              <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
-              <GameCanvas
-                key={gameKey}
-                mode={screen}
-                gameStarted={true}
-                fid={fid}
-                sessionId={`${fid}-${gameKey}`}
-                onMerge={handleMerge}
-                onGameOver={handleGameOver}
-              />
+              <div style={{ flexShrink: 0, width: "100%", maxWidth: 424 }}>
+                <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "flex-start",
+                  width: "100%",
+                }}
+              >
+                <GameCanvas
+                  key={gameKey}
+                  mode={screen}
+                  gameStarted={true}
+                  fid={fid}
+                  sessionId={`${fid}-${gameKey}`}
+                  onMerge={handleMerge}
+                  onGameOver={handleGameOver}
+                />
+              </div>
             </>
           ) : (
             <GameOver
