@@ -4,11 +4,7 @@ import {
   requireQuickAuthUser,
   isInvalidTokenError,
 } from "@/lib/quick-auth-server";
-import { isAdmin } from "@/lib/admin";
-import {
-  createTournamentEntry,
-  createPracticeEntry,
-} from "@/lib/attempts";
+import { createTournamentEntry } from "@/lib/attempts";
 
 export const dynamic = "force-dynamic";
 
@@ -27,14 +23,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
     }
 
-    const admin = isAdmin(user.fid);
-
-    // Create entry increments attempts
-    if (mode === "tournament") {
-      await createTournamentEntry(redis, user.fid, admin);
-    } else {
-      await createPracticeEntry(redis, user.fid, admin);
+    // Practice: gunluk ucretsiz, entry olusturmaya gerek yok
+    if (mode === "practice") {
+      return NextResponse.json({ success: true }, { status: 200 });
     }
+
+    // Tournament: 3 hak ekle
+    await createTournamentEntry(redis, user.fid);
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
