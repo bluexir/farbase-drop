@@ -22,7 +22,7 @@ export async function GET() {
       primaryCategory: "games",
       tags: ["merge", "crypto", "game", "tournament", "base"],
       tagline: "Drop, Merge, Win, USDC",
-      ogTitle: "FarBase Drop - Merge & Win",
+      ogTitle: "FarBase Drop - Merge  Win",
       ogDescription: "Drop and merge crypto coins. Compete in weekly tournaments and win USDC prizes on Base.",
     },
   };
