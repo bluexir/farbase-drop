@@ -79,8 +79,10 @@ export async function getTop5(mode: "practice" | "tournament") {
   const entries: LeaderboardEntry[] = Object.values(all || {})
     .map((v) => {
       try {
-        return JSON.parse(v) as LeaderboardEntry;
-     } catch (_e) {
+        if (typeof v === "object" && v !== null) return v as unknown as LeaderboardEntry;
+        if (typeof v === "string") return JSON.parse(v) as LeaderboardEntry;
+        return null;
+      } catch (_e) {
         return null;
       }
     })
@@ -127,7 +129,7 @@ async function fetchProfiles(fids: number[]) {
       map[u.fid] = u;
     }
     return map;
- } catch (_e) {
+  } catch (_e) {
     return {};
   }
 }
