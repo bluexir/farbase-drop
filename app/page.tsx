@@ -197,7 +197,7 @@ export default function Home() {
           return;
         }
 
-        const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+        const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
         const currentAddress = accounts?.[0];
         if (!currentAddress) {
           console.error("Wallet not connected");
