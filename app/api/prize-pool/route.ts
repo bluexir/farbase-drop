@@ -16,7 +16,7 @@ const CONTRACT_ABI = [
 // USDC (6 decimals) -> 2 decimals string (yuvarlama ile)
 function formatUSDC2(units6: bigint): string {
   // 6 -> 2 decimal: divide by 10^4 with rounding
-  const cents = (units6 + 5000n) / 10000n; // 2 decimals
+ const cents = (units6 + BigInt(5000)) / BigInt(10000);
   const s = cents.toString();
   if (s.length === 1) return `0.0${s}`;
   if (s.length === 2) return `0.${s}`;
