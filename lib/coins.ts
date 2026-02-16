@@ -91,6 +91,16 @@ export const COINS: Coin[] = [
     glowColor: "#0052FF88",
     score: 128,
     iconUrl: "/farbase-logo.png",
+   },
+  {
+    level: 9,
+    name: "Farcaster",
+    symbol: "FARCASTER",
+    radius: 120,
+    color: "#8A63D2",
+    glowColor: "#8A63D288",
+    score: 256,
+    iconUrl: "/farcaster-logo.png",
   },
 ];
 
