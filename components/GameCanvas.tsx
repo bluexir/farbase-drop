@@ -112,6 +112,36 @@ export default function GameCanvas({
       ctx.fill();
       ctx.shadowBlur = 0;
 
+      if (coinData.isSponsor) {
+        const t = Date.now() * 0.004;
+        const pulse = 0.5 + 0.5 * Math.sin(t);
+        const ringR = radius + 6 + pulse * 4;
+        const ringW = 2 + pulse * 2;
+
+        ctx.save();
+
+        ctx.shadowColor = coinData.glowColor;
+        ctx.shadowBlur = 18 + pulse * 22;
+
+        ctx.beginPath();
+        ctx.arc(x, y, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.lineWidth = ringW;
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        const a = (t * 0.9) % (Math.PI * 2);
+        ctx.globalAlpha = 0.18 + pulse * 0.12;
+        ctx.beginPath();
+        ctx.arc(x, y, radius - 6, a, a + 0.9);
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.lineWidth = 6;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
       if (img && img.complete && !coinData.isSponsor) {
         ctx.save();
         ctx.beginPath();
@@ -196,7 +226,6 @@ export default function GameCanvas({
       gameLogRef.current.mergeCount = mergeCountRef.current;
       gameLogRef.current.highestLevel = highestLevelRef.current;
 
-      // Kümülatif skor: log event'lerinden hesapla (metadata tutarlılığı)
       let cumulativeScore = 0;
       for (const event of gameLogRef.current.events) {
         if (event.type === "MERGE" && event.data.toLevel) {
@@ -214,7 +243,6 @@ export default function GameCanvas({
     ctx.fillStyle = "#0a0a0f";
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // danger line
     ctx.beginPath();
     ctx.strokeStyle = "rgba(239,68,68,0.4)";
     ctx.lineWidth = 2;
@@ -352,7 +380,7 @@ export default function GameCanvas({
       onTouchStart={handleStart}
       onTouchMove={handleMove}
       onTouchEnd={handleEnd}
-   style={{
+      style={{
         maxWidth: "100%",
         maxHeight: "100%",
         touchAction: "none",
