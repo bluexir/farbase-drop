@@ -3,7 +3,7 @@ import "./globals.css";
 
 const miniAppEmbed = {
   version: "1",
-  imageUrl: "https://farbase-drop.vercel.app/og.png",
+imageUrl: "https://farbase-drop.vercel.app/image.png",
   button: {
     title: "🪙 FarBase Drop",
     action: {
