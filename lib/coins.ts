@@ -29,7 +29,7 @@ export const COINS: Coin[] = [
     color: "#FFA500",
     glowColor: "#FFA50088",
     score: 2,
-    iconUrl: "/farcaster-logo.png",
+    iconUrl: "/shib-logo.png",
   },
   {
     level: 3,
