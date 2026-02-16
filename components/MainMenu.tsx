@@ -426,73 +426,82 @@ export default function MainMenu({
                 </span>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {recommendedApps.map((app, i) => (
-                  <a
-                    key={i}
-                    href={app.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      textDecoration: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      background: 'rgba(0,0,0,0.35)',
-                      border: '1px solid rgba(124,58,237,0.35)',
-                      borderRadius: '12px',
-                      padding: '12px',
-                      color: '#fff',
-                      transition: 'border-color 0.2s ease',
-                    }}
-                  >
-                    {app.icon && (
-                      <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>
-                        {app.icon}
-                      </span>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
-                      <div
-                        style={{
-                          color: '#aaa',
-                          fontSize: '0.72rem',
-                          marginTop: 3,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        }}
-                      >
-                        {app.description}
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        background: 'rgba(124,58,237,0.3)',
-                        border: '1px solid rgba(124,58,237,0.5)',
-                        borderRadius: '8px',
-                        padding: '4px 10px',
-                        fontSize: '0.7rem',
-                        fontWeight: 800,
-                        color: '#c4b5fd',
-                      }}
-                    >
-                      Open
-                    </span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ height: 18 }} />
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+  {recommendedApps.map((app, i) => (
+    <button
+      key={i}
+      type="button"
+      onClick={async () => {
+        try {
+          await sdk.actions.openUrl(app.url);
+        } catch (_e) {
+          window.open(app.url, "_blank", "noopener,noreferrer");
+        }
+      }}
+      style={{
+        textDecoration: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        background: 'rgba(0,0,0,0.35)',
+        border: '1px solid rgba(124,58,237,0.35)',
+        borderRadius: '12px',
+        padding: '12px',
+        color: '#fff',
+        transition: 'border-color 0.2s ease',
+        width: '100%',
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      {app.icon && (
+        <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>
+          {app.icon}
+        </span>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
+        <div
+          style={{
+            color: '#aaa',
+            fontSize: '0.72rem',
+            marginTop: 3,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+          }}
+        >
+          {app.description}
         </div>
       </div>
+      <span
+        style={{
+          flexShrink: 0,
+          background: 'rgba(124,58,237,0.3)',
+          border: '1px solid rgba(124,58,237,0.5)',
+          borderRadius: '8px',
+          padding: '4px 10px',
+          fontSize: '0.7rem',
+          fontWeight: 800,
+          color: '#c4b5fd',
+        }}
+      >
+        Open
+      </span>
+    </button>
+  ))}
+</div>
+</div>
+</div>
+)}
 
-      {showHowToPlay && <HowToPlay onClose={() => setShowHowToPlay(false)} />}
-    </div>
-  );
+<div style={{ height: 18 }} />
+</div>
+</div>
+
+{showHowToPlay && <HowToPlay onClose={() => setShowHowToPlay(false)} />}
+</div>
+);
 }
