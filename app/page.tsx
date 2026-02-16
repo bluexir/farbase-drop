@@ -47,7 +47,8 @@ export default function Home() {
       try {
         const context = await sdk.context;
         setFid(context.user.fid);
-        await sdk.actions.ready();
+       await sdk.actions.ready();
+        try { await sdk.actions.addMiniApp(); } catch (_e) {}
 
         // Admin kontrolu — menu acilir acilmaz admin butonu gozuksun
         try {
