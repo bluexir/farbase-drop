@@ -1,7 +1,7 @@
 import type { Redis } from "@upstash/redis";
 
 export const PRACTICE_LIMIT = 3;
-export const PRACTICE_LIMIT_ADMIN = 10;
+export const PRACTICE_LIMIT_ADMIN = 50;
 export const TOURNAMENT_ATTEMPTS_PER_ENTRY = 3;
 
 // ---- Key helpers ----
