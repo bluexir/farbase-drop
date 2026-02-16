@@ -439,7 +439,6 @@ export default function MainMenu({
         }
       }}
       style={{
-        textDecoration: 'none',
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
@@ -493,15 +492,3 @@ export default function MainMenu({
     </button>
   ))}
 </div>
-</div>
-</div>
-)}
-
-<div style={{ height: 18 }} />
-</div>
-</div>
-
-{showHowToPlay && <HowToPlay onClose={() => setShowHowToPlay(false)} />}
-</div>
-);
-}
