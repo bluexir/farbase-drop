@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getTop5,
+  getLeaderboard,
   enrichWithProfiles,
   getPlayerBestScore,
 } from "@/lib/leaderboard";
@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get("mode");
     const fidParam = searchParams.get("fid");
+    const limitParam = searchParams.get("limit");
 
     if (mode !== "practice" && mode !== "tournament") {
       return NextResponse.json(
@@ -22,8 +23,11 @@ export async function GET(request: NextRequest) {
 
     const fid = fidParam ? Number(fidParam) : null;
 
-    const top5 = await getTop5(mode);
-    const enriched = await enrichWithProfiles(top5);
+    // ✅ default: 500 kişi (istersen ?limit=1000)
+    const limit = limitParam ? Number(limitParam) : 500;
+
+    const list = await getLeaderboard(mode, Number.isFinite(limit) ? limit : 500);
+    const enriched = await enrichWithProfiles(list);
 
     const playerBest = fid ? await getPlayerBestScore(mode, fid) : null;
 
