@@ -117,7 +117,7 @@ export default function GameCanvas({
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.clip();
-        ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
+        ctx.drawImage(img, x - radius * 1.15, y - radius * 1.15, radius * 2.3, radius * 2.3);
         ctx.restore();
       } else {
         ctx.fillStyle = "#fff";
