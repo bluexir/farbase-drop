@@ -35,106 +35,27 @@ export default function Home() {
   const [mergeCount, setMergeCount] = useState(0);
   const [highestLevel, setHighestLevel] = useState(1);
 
-  const [gameKey, setGameKey] = useState(0);
   const [currentMode, setCurrentMode] = useState<"practice" | "tournament">("practice");
+  const [gameKey, setGameKey] = useState(0);
+
   const [scoreSaved, setScoreSaved] = useState(false);
   const [scoreSaveError, setScoreSaveError] = useState<string | null>(null);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isNewBest, setIsNewBest] = useState(false);
 
   useEffect(() => {
-    async function init() {
+    (async () => {
       try {
-        const context = await sdk.context;
-        setFid(context.user.fid);
-       await sdk.actions.ready();
-        try { await sdk.actions.addMiniApp(); } catch (_e) {}
-
-        // Admin kontrolu — menu acilir acilmaz admin butonu gozuksun
-        try {
-          const { token } = await sdk.quickAuth.getToken();
-          const res = await fetch("/api/remaining-attempts?mode=practice", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const data = (await res.json()) as AttemptsResponse;
-            if (data.isAdmin) setIsAdmin(true);
-          }
-        } catch (_e) {
-          // Token alinamazsa admin kontrolu atlanir
-        }
+        await sdk.actions.ready();
+        const ctx = await sdk.context;
+        setFid(ctx.user?.fid ?? null);
       } catch (e) {
         console.error("SDK init error:", e);
       } finally {
         setLoading(false);
       }
-    }
-    init();
+    })();
   }, []);
-
-  // Kumulatif skor: her merge'de olusan coin'in score'u eklenir
-  const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
-    const coinData = getCoinByLevel(toLevel);
-    const increment = coinData?.score || 0;
-    setScore((prev) => prev + increment);
-    setMergeCount((prev) => prev + 1);
-    setHighestLevel((prev) => Math.max(prev, toLevel));
-  }, []);
-
-  const handleGameOver = useCallback(
-    async (finalMerges: number, finalHighest: number, gameLog: GameLog) => {
-      setGameOver(true);
-
-      // Kumulatif skor: game log'dan hesapla (server ile ayni formul)
-      const calculated = calculateScoreFromLog(gameLog);
-      const finalScore = calculated.score;
-
-      setScore(finalScore);
-      setMergeCount(finalMerges);
-      setHighestLevel(finalHighest);
-      setScoreSaved(false);
-      setScoreSaveError(null);
-      setRemainingAttempts(null);
-      setIsNewBest(false);
-
-      // Practice modunda wallet bagli olmayabilir
-      const currentAddress = address || "0x0000000000000000000000000000000000000000";
-
-      try {
-        const res = await sdk.quickAuth.fetch("/api/save-score", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            address: currentAddress,
-            score: finalScore,
-            mergeCount: finalMerges,
-            highestLevel: finalHighest,
-            mode: currentMode,
-            gameLog,
-            sessionId: `${fid}-${Date.now()}`,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-          setScoreSaved(true);
-          if (typeof data.remaining === "number") {
-            setRemainingAttempts(data.remaining);
-          }
-          if (data.isNewBest) {
-            setIsNewBest(true);
-          }
-        } else {
-          setScoreSaveError(data.error || "Failed to save score");
-        }
-      } catch (e) {
-        console.error("Save score error:", e);
-        setScoreSaveError("Network error — score not saved");
-      }
-    },
-    [fid, address, currentMode]
-  );
 
   const handleCast = useCallback(async () => {
     try {
@@ -144,7 +65,7 @@ export default function Home() {
         process.env.NEXT_PUBLIC_APP_URL ||
         "https://farbase-drop.vercel.app";
 
-     const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
+      const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
       }\n\nPlay now: ${miniappUrl}\n\nBy @bluexir`;
 
@@ -229,24 +150,27 @@ export default function Home() {
           return;
         }
 
+        const { ethers } = await import("ethers");
+
         const waitForTransaction = async (txHash: `0x${string}`) => {
+          // IMPORTANT: Farcaster/Base in-app providers may NOT support eth_getTransactionReceipt reliably.
+          // If we poll receipts via the in-app provider, we can get stuck after "Approve" and never reach tx #2.
+          const rpc =
+            process.env.NEXT_PUBLIC_BASE_RPC_URL ||
+            process.env.BASE_MAINNET_RPC_URL ||
+            "https://mainnet.base.org";
+          const publicProvider = new ethers.JsonRpcProvider(rpc);
+
           let attempts = 0;
-          while (attempts < 30) {
-            const receipt = (await provider.request({
-              method: "eth_getTransactionReceipt",
-              params: [txHash],
-            })) as any;
-
-            if (receipt && receipt.status === "0x1") return;
-            if (receipt && receipt.status === "0x0") throw new Error("Transaction failed");
-
-            await new Promise((r) => setTimeout(r, 2000));
+          while (attempts < 60) {
+            const receipt = await publicProvider.getTransactionReceipt(txHash);
+            if (receipt && receipt.status === 1) return;
+            if (receipt && receipt.status === 0) throw new Error("Transaction failed");
+            await new Promise((r) => setTimeout(r, 1500));
             attempts++;
           }
           throw new Error("Transaction confirmation timeout");
         };
-
-        const { ethers } = await import("ethers");
 
         // 1) Approve USDC
         const usdcInterface = new ethers.Interface([
@@ -300,7 +224,7 @@ export default function Home() {
         return;
       }
     },
-    [resetGameStateAndStart, address]
+    [resetGameStateAndStart]
   );
 
   const handleRestart = useCallback(() => {
@@ -315,6 +239,40 @@ export default function Home() {
     setGameKey((k) => k + 1);
   }, []);
 
+  const handleGameOver = useCallback(
+    async (mergeCountValue: number, highestLevelValue: number, gameLog: GameLog) => {
+      setGameOver(true);
+      setMergeCount(mergeCountValue);
+      setHighestLevel(highestLevelValue);
+
+      const computedScore = calculateScoreFromLog(gameLog);
+      setScore(computedScore);
+
+      try {
+        const res = await sdk.quickAuth.fetch("/api/save-score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: currentMode,
+            score: computedScore,
+            mergeCount: mergeCountValue,
+            highestLevel: highestLevelValue,
+            gameLog,
+            address,
+          }),
+        });
+
+        const data = await res.json();
+        setScoreSaved(true);
+        setRemainingAttempts(data.remaining ?? null);
+        setIsNewBest(!!data.isNewBest);
+      } catch (e: any) {
+        setScoreSaveError(e?.message || "Failed to save score");
+      }
+    },
+    [currentMode, address]
+  );
+
   if (loading || fid === null) {
     return (
       <div
@@ -325,6 +283,7 @@ export default function Home() {
           justifyContent: "center",
           color: "#fff",
           background: "#000",
+          fontFamily: "sans-serif",
         }}
       >
         Loading...
@@ -333,14 +292,22 @@ export default function Home() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#000" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#000",
+        color: "#fff",
+        fontFamily: "sans-serif",
+        overflow: "hidden",
+      }}
+    >
       {screen === "menu" && (
         <MainMenu
           fid={fid}
           onPractice={() => startGame("practice")}
           onTournament={() => startGame("tournament")}
           onLeaderboard={() => setScreen("leaderboard")}
-          onAdmin={isAdmin ? () => setScreen("admin") : undefined}
+          onAdmin={() => setScreen("admin")}
         />
       )}
 
@@ -349,51 +316,40 @@ export default function Home() {
       {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
 
       {(screen === "practice" || screen === "tournament") && (
-        <div
-          style={{
-            height: "100vh",
-            overflow: "hidden",
-            background: "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          {!gameOver ? (
-            <>
-              <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
-                <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
-              </div>
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "flex-start",
-                  width: "100%",
-                }}
-              >
-                <GameCanvas
-                  key={gameKey}
-                  mode={screen}
-                  gameStarted={true}
-                  fid={fid}
-                  sessionId={`${fid}-${gameKey}`}
-                  onMerge={handleMerge}
-                  onGameOver={handleGameOver}
-                />
-              </div>
-            </>
-          ) : (
+        <div style={{ position: "relative", width: "100%", height: "100vh" }}>
+          <Scoreboard
+            mode={currentMode}
+            score={score}
+            mergeCount={mergeCount}
+            highestLevel={highestLevel}
+            onBack={() => setScreen("menu")}
+          />
+
+          <GameCanvas
+            key={gameKey}
+            fid={fid}
+            mode={currentMode}
+            sessionId={`${fid}-${Date.now()}-${currentMode}`}
+            gameStarted={!gameOver}
+            onMerge={(fromLevel, toLevel) => {
+              setMergeCount((c) => c + 1);
+              setHighestLevel((h) => Math.max(h, toLevel));
+              const coinData = getCoinByLevel(toLevel);
+              if (coinData) setScore((s) => s + coinData.score);
+            }}
+            onGameOver={handleGameOver}
+          />
+
+          {gameOver && (
             <GameOver
+              fid={fid}
+              mode={currentMode}
               score={score}
-              highestLevel={highestLevel}
               mergeCount={mergeCount}
+              highestLevel={highestLevel}
               scoreSaved={scoreSaved}
               scoreSaveError={scoreSaveError}
-              mode={currentMode}
-              remaining={remainingAttempts}
+              remainingAttempts={remainingAttempts}
               isNewBest={isNewBest}
               onRestart={handleRestart}
               onMenu={() => setScreen("menu")}
