@@ -62,11 +62,14 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
         flexDirection: "column",
         alignItems: "center",
         padding: "24px 16px",
+        boxSizing: "border-box",
+        overflow: "hidden", // ✅ sayfa (body) scroll olmasın
       }}
     >
       {/* Header */}
       <div
         style={{
+          flexShrink: 0,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -96,6 +99,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
       {/* Tabs */}
       <div
         style={{
+          flexShrink: 0,
           display: "flex",
           width: "100%",
           maxWidth: "424px",
@@ -141,10 +145,22 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
         </button>
       </div>
 
-      {/* List */}
-      <div style={{ width: "100%", maxWidth: "424px" }}>
+      {/* ✅ Scroll sadece listede */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "424px",
+          flex: 1,
+          minHeight: 0, // ✅ flex içinde overflow çalışsın
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          paddingBottom: "16px",
+        }}
+      >
         {loading ? (
-          <p style={{ color: "#555", textAlign: "center", fontSize: "0.85rem" }}>Loading...</p>
+          <p style={{ color: "#555", textAlign: "center", fontSize: "0.85rem" }}>
+            Loading...
+          </p>
         ) : data.length === 0 ? (
           <div
             style={{
