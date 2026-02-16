@@ -72,10 +72,7 @@ export async function saveScore(
   });
 }
 
-export async function getTop5(mode: "practice" | "tournament") {
-  const key = getKey(mode);
-  const all = await redis.hgetall<Record<string, string>>(key);
-
+function parseAllEntries(all: Record<string, any> | null | undefined) {
   const entries: LeaderboardEntry[] = Object.values(all || {})
     .map((v) => {
       try {
@@ -89,7 +86,25 @@ export async function getTop5(mode: "practice" | "tournament") {
     .filter(Boolean) as LeaderboardEntry[];
 
   entries.sort((a, b) => b.score - a.score);
-  return entries.slice(0, 5);
+  return entries;
+}
+
+// ✅ Genel leaderboard: Top N (varsayılan 500/1000 gibi)
+export async function getLeaderboard(
+  mode: "practice" | "tournament",
+  limit = 500
+) {
+  const key = getKey(mode);
+  const all = await redis.hgetall<Record<string, string>>(key);
+  const entries = parseAllEntries(all);
+
+  const safeLimit = Math.max(1, Math.min(1000, limit)); // 1..1000 arası
+  return entries.slice(0, safeLimit);
+}
+
+// ✅ ÖDÜL / payout tarafı: Top5 aynen kalsın (bozma)
+export async function getTop5(mode: "practice" | "tournament") {
+  return getLeaderboard(mode, 5);
 }
 
 export async function getTop5Tournament() {
@@ -105,7 +120,7 @@ export async function getPlayerBestScore(
   return best || null;
 }
 
-async function fetchProfiles(fids: number[]) {
+async function fetchProfilesBatch(fids: number[]) {
   const apiKey = process.env.NEYNAR_API_KEY;
   if (!apiKey || fids.length === 0) return {};
 
@@ -132,6 +147,20 @@ async function fetchProfiles(fids: number[]) {
   } catch (_e) {
     return {};
   }
+}
+
+async function fetchProfiles(fids: number[]) {
+  // ✅ Büyük listelerde patlamasın diye batch (100’er)
+  const map: Record<number, any> = {};
+  const chunkSize = 100;
+
+  for (let i = 0; i < fids.length; i += chunkSize) {
+    const chunk = fids.slice(i, i + chunkSize);
+    const part = await fetchProfilesBatch(chunk);
+    Object.assign(map, part);
+  }
+
+  return map;
 }
 
 export async function enrichWithProfiles(entries: LeaderboardEntry[]) {
