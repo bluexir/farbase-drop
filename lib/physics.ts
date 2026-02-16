@@ -116,7 +116,7 @@ export function createPhysicsEngine(
     for (let i = 0; i < coins.length; i++) {
       for (let j = i + 1; j < coins.length; j++) {
         if (coins[i].level !== coins[j].level) continue;
-        if (coins[i].level >= 8) continue; // Max level, merge yok
+        if (coins[i].level >= 9) continue; // Max level, merge yok
 
         const a = coins[i].body;
         const b = coins[j].body;
