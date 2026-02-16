@@ -59,7 +59,7 @@ export default function GameCanvas({
 
   useEffect(() => {
     const loadImages = async () => {
-      const levels = Array.from({ length: 8 }, (_, i) => i + 1);
+      const levels = Array.from({ length: 9 }, (_, i) => i + 1);
 
       const loadPromises = levels.map((level) => {
         const coinData = getCoinByLevel(level);
