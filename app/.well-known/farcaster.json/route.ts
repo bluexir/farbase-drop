@@ -15,6 +15,7 @@ export async function GET() {
       imageUrl: "https://farbase-drop.vercel.app/image.png",
       buttonTitle: "Play Now",
       splashImageUrl: "https://farbase-drop.vercel.app/splash.png",
+      ogImageUrl:"https://farbase-drop.vercel.app/image.png",
       splashBackgroundColor: "#0a0a1a",
       webhookUrl: "https://farbase-drop.vercel.app/api/webhook",
       subtitle: "Crypto Merge Game on Base",
