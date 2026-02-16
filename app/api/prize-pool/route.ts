@@ -3,24 +3,20 @@ import { ethers } from "ethers";
 
 export const dynamic = "force-dynamic";
 
-const CONTRACT_ABI = [
+const ERC20_ABI = [
   {
-    inputs: [],
-    name: "getUSDCPool",
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "balanceOf",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
     stateMutability: "view",
     type: "function",
   },
 ];
 
-// USDC (6 decimals) -> 2 decimals string (yuvarlama ile)
-function formatUSDC2(units6: bigint): string {
-  // 6 -> 2 decimal: divide by 10^4 with rounding
- const cents = (units6 + BigInt(5000)) / BigInt(10000);
-  const s = cents.toString();
-  if (s.length === 1) return `0.0${s}`;
-  if (s.length === 2) return `0.${s}`;
-  return `${s.slice(0, -2)}.${s.slice(-2)}`;
+function to2Decimals(usdcStr: string) {
+  // "1", "1.2", "1.2345" -> "1.00", "1.20", "1.23"
+  const [i, d = ""] = usdcStr.split(".");
+  return `${i}.${(d + "00").slice(0, 2)}`;
 }
 
 export async function GET() {
@@ -35,16 +31,22 @@ export async function GET() {
       );
     }
 
+    // Base USDC (default) – sende env varsa onu kullanır
+    const usdcAddress =
+      process.env.NEXT_PUBLIC_USDC_ADDRESS ||
+      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
     const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
     const provider = new ethers.JsonRpcProvider(rpc);
-    const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, provider);
 
-    const poolRaw: bigint = await contract.getUSDCPool();
+    const usdc = new ethers.Contract(usdcAddress, ERC20_ABI, provider);
+    const balanceRaw: bigint = await usdc.balanceOf(contractAddress);
 
+    const formatted = ethers.formatUnits(balanceRaw, 6); // USDC 6 decimals
     return NextResponse.json(
       {
-        amount: formatUSDC2(poolRaw),    // UI bununla "$X.XX USDC" gösteriyor
-        amountRaw: poolRaw.toString(),   // debug için dursun
+        amount: to2Decimals(formatted),
+        amountRaw: balanceRaw.toString(),
       },
       { status: 200 }
     );
