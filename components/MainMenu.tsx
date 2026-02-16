@@ -13,7 +13,7 @@ interface MainMenuProps {
 }
 
 type AttemptsResponse = {
-  mode: "practice" | "tournament";
+  mode: 'practice' | 'tournament';
   remaining: number;
   limit: number;
   isAdmin: boolean;
@@ -51,7 +51,7 @@ export default function MainMenu({
   onLeaderboard,
   onAdmin,
 }: MainMenuProps) {
-  const [prizePool, setPrizePool] = useState<string>("0");
+  const [prizePool, setPrizePool] = useState<string>('0');
   const [recommendedApps, setRecommendedApps] = useState<any[]>([]);
   const [practiceAttempts, setPracticeAttempts] = useState<number>(3);
   const [tournamentAttempts, setTournamentAttempts] = useState<number>(0);
@@ -62,48 +62,46 @@ export default function MainMenu({
   useEffect(() => {
     async function fetchPrizePool() {
       try {
-        const res = await fetch("/api/prize-pool");
+        const res = await fetch('/api/prize-pool');
         const data = await res.json();
-        setPrizePool(data.amount || "0");
+        setPrizePool(data.amount || '0');
       } catch (e) {
-        console.error("Failed to fetch prize pool:", e);
+        console.error('Failed to fetch prize pool:', e);
       }
     }
 
     async function fetchRecommendedApps() {
       try {
-        const res = await fetch("/recommended-apps.json");
+        const res = await fetch('/recommended-apps.json');
         const data = await res.json();
         setRecommendedApps(data.apps || []);
       } catch (e) {
-        console.error("Failed to fetch recommended apps:", e);
+        console.error('Failed to fetch recommended apps:', e);
       }
     }
 
     async function fetchAttempts() {
       try {
-        const practiceRes = await fetchWithQuickAuth("/api/remaining-attempts?mode=practice");
+        const practiceRes = await fetchWithQuickAuth('/api/remaining-attempts?mode=practice');
         if (practiceRes.ok) {
           const practiceData = (await practiceRes.json()) as AttemptsResponse;
-          setPracticeAttempts(
-            typeof practiceData.remaining === "number" ? practiceData.remaining : 3
-          );
+          setPracticeAttempts(typeof practiceData.remaining === 'number' ? practiceData.remaining : 3);
           setPracticeResetIn(
-            typeof practiceData.resetInSeconds === "number" ? practiceData.resetInSeconds : null
+            typeof practiceData.resetInSeconds === 'number' ? practiceData.resetInSeconds : null
           );
           setIsAdmin(!!practiceData.isAdmin);
         }
 
-        const tournamentRes = await fetchWithQuickAuth("/api/remaining-attempts?mode=tournament");
+        const tournamentRes = await fetchWithQuickAuth('/api/remaining-attempts?mode=tournament');
         if (tournamentRes.ok) {
           const tournamentData = (await tournamentRes.json()) as AttemptsResponse;
           setTournamentAttempts(
-            typeof tournamentData.remaining === "number" ? tournamentData.remaining : 0
+            typeof tournamentData.remaining === 'number' ? tournamentData.remaining : 0
           );
           setIsAdmin((prev) => prev || !!tournamentData.isAdmin);
         }
       } catch (e) {
-        console.error("Failed to fetch attempts:", e);
+        console.error('Failed to fetch attempts:', e);
       }
     }
 
@@ -264,16 +262,17 @@ export default function MainMenu({
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? "unlimited" : practiceAttempts + "/3"}
+                {isAdmin ? 'unlimited' : practiceAttempts + '/3'}
               </span>
             </div>
 
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
               {isAdmin
-                ? "Admin test - Unlimited attempts"
+                ? 'Admin test - Unlimited attempts'
                 : practiceAttempts > 0
-                  ? "Daily free attempts - No rewards"
-                  : "No attempts left - Resets in " + (practiceResetIn ? formatCountdown(practiceResetIn) : "soon")}
+                ? 'Daily free attempts - No rewards'
+                : 'No attempts left - Resets in ' +
+                  (practiceResetIn ? formatCountdown(practiceResetIn) : 'soon')}
             </p>
           </div>
 
@@ -319,7 +318,7 @@ export default function MainMenu({
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? "unlimited" : tournamentAttempts + "/3"}
+                {isAdmin ? 'unlimited' : tournamentAttempts + '/3'}
               </span>
             </div>
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
@@ -369,7 +368,14 @@ export default function MainMenu({
               textAlign: 'left',
             }}
           >
-            <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div
+              style={{
+                marginBottom: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#eab308' }}>
                 Prize Pool
               </span>
@@ -388,7 +394,7 @@ export default function MainMenu({
             </div>
 
             <div style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: 6 }}>
-              {"$" + prizePool + " USDC"}
+              {'$' + prizePool + ' USDC'}
             </div>
 
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
@@ -426,69 +432,80 @@ export default function MainMenu({
                 </span>
               </div>
 
-             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-  {recommendedApps.map((app, i) => (
-    <button
-      key={i}
-      type="button"
-      onClick={async () => {
-        try {
-          await sdk.actions.openUrl(app.url);
-        } catch (_e) {
-          window.open(app.url, "_blank", "noopener,noreferrer");
-        }
-      }}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        background: 'rgba(0,0,0,0.35)',
-        border: '1px solid rgba(124,58,237,0.35)',
-        borderRadius: '12px',
-        padding: '12px',
-        color: '#fff',
-        transition: 'border-color 0.2s ease',
-        width: '100%',
-        cursor: 'pointer',
-        textAlign: 'left',
-      }}
-    >
-      {app.icon && (
-        <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>
-          {app.icon}
-        </span>
-      )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
-        <div
-          style={{
-            color: '#aaa',
-            fontSize: '0.72rem',
-            marginTop: 3,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-          }}
-        >
-          {app.description}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {recommendedApps.map((app, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await sdk.actions.openUrl(app.url);
+                      } catch (_e) {
+                        window.open(app.url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      background: 'rgba(0,0,0,0.35)',
+                      border: '1px solid rgba(124,58,237,0.35)',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      color: '#fff',
+                      transition: 'border-color 0.2s ease',
+                      width: '100%',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {app.icon && (
+                      <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>
+                        {app.icon}
+                      </span>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
+                      <div
+                        style={{
+                          color: '#aaa',
+                          fontSize: '0.72rem',
+                          marginTop: 3,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {app.description}
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        background: 'rgba(124,58,237,0.3)',
+                        border: '1px solid rgba(124,58,237,0.5)',
+                        borderRadius: '8px',
+                        padding: '4px 10px',
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        color: '#c4b5fd',
+                      }}
+                    >
+                      Open
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ height: 18 }} />
         </div>
       </div>
-      <span
-        style={{
-          flexShrink: 0,
-          background: 'rgba(124,58,237,0.3)',
-          border: '1px solid rgba(124,58,237,0.5)',
-          borderRadius: '8px',
-          padding: '4px 10px',
-          fontSize: '0.7rem',
-          fontWeight: 800,
-          color: '#c4b5fd',
-        }}
-      >
-        Open
-      </span>
-    </button>
-  ))}
-</div>
+
+      {showHowToPlay && <HowToPlay onClose={() => setShowHowToPlay(false)} />}
+    </div>
+  );
+}
