@@ -3,7 +3,7 @@ import "./globals.css";
 
 const miniAppEmbed = {
   version: "1",
-imageUrl: "https://farbase-drop.vercel.app/image.png",
+  imageUrl: "https://farbase-drop.vercel.app/image.png",
   button: {
     title: "🪙 FarBase Drop",
     action: {
@@ -30,6 +30,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <meta name="base:app_id" content="6993b3bb7ca07f5750bbdc2b" />
+      </head>
       <body>{children}</body>
     </html>
   );
