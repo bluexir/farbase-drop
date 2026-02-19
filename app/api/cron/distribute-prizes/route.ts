@@ -30,7 +30,7 @@ const CONTRACT_ABI = [
   },
 ];
 
-// Leaderboard.ts ile aynı mantık: UTC Pazartesi 00:00 başlangıç anahtarı
+// UTC Pazartesi 00:00 başlangıç anahtarı (hafta key)
 function getWeekKey() {
   const now = new Date();
   const utc = new Date(
@@ -72,11 +72,20 @@ function uniqValidAddresses(addrs: string[]) {
   return out;
 }
 
+// Log helper (tek satır, okunabilir)
+function log(tag: string, data: Record<string, any>) {
+  console.log(`[cron:distribute] ${tag}`, data);
+}
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    log("unauthorized", {});
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const startedAt = Date.now();
+  const weekKey = getWeekKey(); // loglarda her zaman görünsün diye try dışına aldım
 
   try {
     const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
@@ -84,7 +93,10 @@ export async function GET(request: Request) {
     const usdcAddressRaw =
       process.env.NEXT_PUBLIC_USDC_ADDRESS || process.env.USDC_ADDRESS;
 
+    log("start", { weekKey });
+
     if (!privateKey || !contractAddress) {
+      log("missing_env", { weekKey, missing: "DEPLOYER_PRIVATE_KEY/CONTRACT_ADDRESS" });
       return NextResponse.json(
         { error: "DEPLOYER_PRIVATE_KEY or CONTRACT_ADDRESS not set" },
         { status: 500 }
@@ -92,6 +104,7 @@ export async function GET(request: Request) {
     }
 
     if (!usdcAddressRaw) {
+      log("missing_env", { weekKey, missing: "NEXT_PUBLIC_USDC_ADDRESS/USDC_ADDRESS" });
       return NextResponse.json(
         { error: "NEXT_PUBLIC_USDC_ADDRESS (or USDC_ADDRESS) not set" },
         { status: 500 }
@@ -99,11 +112,19 @@ export async function GET(request: Request) {
     }
 
     if (!ethers.isAddress(contractAddress)) {
-      return NextResponse.json({ error: "Invalid CONTRACT_ADDRESS" }, { status: 500 });
+      log("bad_env", { weekKey, field: "CONTRACT_ADDRESS", value: contractAddress });
+      return NextResponse.json(
+        { error: "Invalid CONTRACT_ADDRESS" },
+        { status: 500 }
+      );
     }
 
     if (!ethers.isAddress(usdcAddressRaw)) {
-      return NextResponse.json({ error: "Invalid USDC address env var" }, { status: 500 });
+      log("bad_env", { weekKey, field: "USDC_ADDRESS", value: usdcAddressRaw });
+      return NextResponse.json(
+        { error: "Invalid USDC address env var" },
+        { status: 500 }
+      );
     }
 
     const usdcAddress = ethers.getAddress(usdcAddressRaw);
@@ -114,18 +135,27 @@ export async function GET(request: Request) {
 
     // Pool kontrolü
     const poolBalance: bigint = await contract.getPool(usdcAddress);
+    log("pool_checked", {
+      weekKey,
+      token: usdcAddress,
+      poolBefore: poolBalance.toString(),
+    });
+
     if (poolBalance === BigInt(0)) {
+      log("skip_no_pool", { weekKey });
       return NextResponse.json(
-        { message: "No pool to distribute", poolBefore: "0" },
+        { message: "No pool to distribute", weekKey, poolBefore: "0" },
         { status: 200 }
       );
     }
 
-    // Aynı hafta ikinci kez dağıtma (idempotent)
-    const weekKey = getWeekKey();
+    // Idempotent: aynı hafta 2. kez dağıtma
     const paidKey = `payout:done:${weekKey}`;
     const alreadyPaid = await redis.get<number>(paidKey);
+    log("paid_check", { weekKey, paidKey, alreadyPaid: Boolean(alreadyPaid) });
+
     if (alreadyPaid) {
+      log("skip_already_paid", { weekKey });
       return NextResponse.json(
         { message: "Already distributed for this week", weekKey },
         { status: 200 }
@@ -134,12 +164,26 @@ export async function GET(request: Request) {
 
     // Winner adayları: leaderboard top5
     const top5 = await getTop5Tournament();
-    const candidateAddrs = (top5 || []).map((x: any) => x?.address).filter(Boolean);
+    const candidateAddrs = (top5 || [])
+      .map((x: any) => x?.address)
+      .filter((x: any) => typeof x === "string");
 
     const winners = uniqValidAddresses(candidateAddrs);
 
-    // Kontrat: "exactly 5 winners" istiyor → 5 yoksa dağıtma
+    log("winners_collected", {
+      weekKey,
+      candidates: candidateAddrs.length,
+      uniqueValid: winners.length,
+      winnersPreview: winners, // 5 adres max; loglamak güvenli
+    });
+
+    // Kontrat: EXACTLY 5 winners istiyor
     if (winners.length < 5) {
+      log("skip_need_5", {
+        weekKey,
+        uniqueWinnersFound: winners.length,
+        poolBefore: poolBalance.toString(),
+      });
       return NextResponse.json(
         {
           message: "Not enough unique winners yet (need 5). Skipping distribution.",
@@ -151,14 +195,22 @@ export async function GET(request: Request) {
       );
     }
 
-    // Tam 5 winner gönder
     const finalWinners = winners.slice(0, 5);
 
-    const tx = await contract.autoDistributePrizes(usdcAddress, finalWinners);
-    const receipt = await tx.wait();
+    log("tx_sending", { weekKey, token: usdcAddress, finalWinners });
 
-    // Ödeme tamamlandı flag (tekrar dağıtmasın)
+    const tx = await contract.autoDistributePrizes(usdcAddress, finalWinners);
+    log("tx_sent", { weekKey, txHash: tx.hash });
+
+    const receipt = await tx.wait();
+    log("tx_mined", { weekKey, txHash: receipt.hash });
+
+    // ödeme tamamlandı flag
     await redis.set(paidKey, 1);
+    log("paid_marked", { weekKey, paidKey });
+
+    const durationMs = Date.now() - startedAt;
+    log("success", { weekKey, durationMs });
 
     return NextResponse.json(
       {
@@ -168,13 +220,15 @@ export async function GET(request: Request) {
         winners: finalWinners,
         txHash: receipt.hash,
         poolBefore: poolBalance.toString(),
+        durationMs,
       },
       { status: 200 }
     );
   } catch (error) {
+    log("error", { weekKey, details: String(error) });
     console.error("Distribute prizes error:", error);
     return NextResponse.json(
-      { error: "Failed to distribute prizes", details: String(error) },
+      { error: "Failed to distribute prizes", weekKey, details: String(error) },
       { status: 500 }
     );
   }
