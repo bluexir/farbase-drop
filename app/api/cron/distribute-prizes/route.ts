@@ -30,7 +30,7 @@ const CONTRACT_ABI = [
   },
 ];
 
-// UTC Pazartesi 00:00 başlangıç anahtarı (hafta key)
+// UTC Pazartesi 00:00 başlangıç anahtarı (weekKey)
 function getWeekKey() {
   const now = new Date();
   const utc = new Date(
@@ -72,10 +72,18 @@ function uniqValidAddresses(addrs: string[]) {
   return out;
 }
 
-// Log helper (tek satır, okunabilir)
 function log(tag: string, data: Record<string, any>) {
   console.log(`[cron:distribute] ${tag}`, data);
 }
+
+type PayoutRecord = {
+  weekKey: string;
+  token: string;
+  winners: string[];
+  txHash: string;
+  poolBefore: string;
+  distributedAt: string; // ISO
+};
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -85,7 +93,7 @@ export async function GET(request: Request) {
   }
 
   const startedAt = Date.now();
-  const weekKey = getWeekKey(); // loglarda her zaman görünsün diye try dışına aldım
+  const weekKey = getWeekKey();
 
   try {
     const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
@@ -96,7 +104,10 @@ export async function GET(request: Request) {
     log("start", { weekKey });
 
     if (!privateKey || !contractAddress) {
-      log("missing_env", { weekKey, missing: "DEPLOYER_PRIVATE_KEY/CONTRACT_ADDRESS" });
+      log("missing_env", {
+        weekKey,
+        missing: "DEPLOYER_PRIVATE_KEY/CONTRACT_ADDRESS",
+      });
       return NextResponse.json(
         { error: "DEPLOYER_PRIVATE_KEY or CONTRACT_ADDRESS not set" },
         { status: 500 }
@@ -104,7 +115,10 @@ export async function GET(request: Request) {
     }
 
     if (!usdcAddressRaw) {
-      log("missing_env", { weekKey, missing: "NEXT_PUBLIC_USDC_ADDRESS/USDC_ADDRESS" });
+      log("missing_env", {
+        weekKey,
+        missing: "NEXT_PUBLIC_USDC_ADDRESS/USDC_ADDRESS",
+      });
       return NextResponse.json(
         { error: "NEXT_PUBLIC_USDC_ADDRESS (or USDC_ADDRESS) not set" },
         { status: 500 }
@@ -112,7 +126,11 @@ export async function GET(request: Request) {
     }
 
     if (!ethers.isAddress(contractAddress)) {
-      log("bad_env", { weekKey, field: "CONTRACT_ADDRESS", value: contractAddress });
+      log("bad_env", {
+        weekKey,
+        field: "CONTRACT_ADDRESS",
+        value: contractAddress,
+      });
       return NextResponse.json(
         { error: "Invalid CONTRACT_ADDRESS" },
         { status: 500 }
@@ -133,7 +151,6 @@ export async function GET(request: Request) {
     const wallet = new ethers.Wallet(privateKey, provider);
     const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, wallet);
 
-    // Pool kontrolü
     const poolBalance: bigint = await contract.getPool(usdcAddress);
     log("pool_checked", {
       weekKey,
@@ -149,7 +166,7 @@ export async function GET(request: Request) {
       );
     }
 
-    // Idempotent: aynı hafta 2. kez dağıtma
+    // Idempotent: aynı weekKey için ikinci kez dağıtma
     const paidKey = `payout:done:${weekKey}`;
     const alreadyPaid = await redis.get<number>(paidKey);
     log("paid_check", { weekKey, paidKey, alreadyPaid: Boolean(alreadyPaid) });
@@ -174,10 +191,10 @@ export async function GET(request: Request) {
       weekKey,
       candidates: candidateAddrs.length,
       uniqueValid: winners.length,
-      winnersPreview: winners, // 5 adres max; loglamak güvenli
+      winnersPreview: winners,
     });
 
-    // Kontrat: EXACTLY 5 winners istiyor
+    // Kontrat EXACTLY 5 istiyor → <5 ise dağıtma, hak yanmasın (havuz birikir)
     if (winners.length < 5) {
       log("skip_need_5", {
         weekKey,
@@ -205,9 +222,27 @@ export async function GET(request: Request) {
     const receipt = await tx.wait();
     log("tx_mined", { weekKey, txHash: receipt.hash });
 
-    // ödeme tamamlandı flag
+    // Dağıtım kaydı (UI için)
+    const record: PayoutRecord = {
+      weekKey,
+      token: usdcAddress,
+      winners: finalWinners,
+      txHash: receipt.hash,
+      poolBefore: poolBalance.toString(),
+      distributedAt: new Date().toISOString(),
+    };
+
+    // 1) Bu weekKey ödendi (idempotent kilit)
     await redis.set(paidKey, 1);
+
+    // 2) Bu haftanın kaydı
+    await redis.set(`payout:record:${weekKey}`, record);
+
+    // 3) En son dağıtım (UI “Geçen haftanın kazananları” için)
+    await redis.set("payout:last", record);
+
     log("paid_marked", { weekKey, paidKey });
+    log("record_saved", { weekKey, lastKey: "payout:last" });
 
     const durationMs = Date.now() - startedAt;
     log("success", { weekKey, durationMs });
