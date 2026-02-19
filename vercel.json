@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/distribute-prizes",
-      "schedule": "0 14 * * 2"
+      "schedule": "15 0 * * 1"
     }
   ]
 }
