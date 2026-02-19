@@ -85,7 +85,7 @@ export async function GET(request: Request) {
 
     // Pool = token balance held by the contract (as defined by getPool)
     const poolBalance: bigint = await contract.getPool(usdcAddress);
-    if (poolBalance === 0n) {
+if (poolBalance === BigInt(0)) {
       return NextResponse.json(
         { message: "No pool to distribute", pool: "0" },
         { status: 200 }
