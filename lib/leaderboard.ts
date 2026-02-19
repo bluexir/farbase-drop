@@ -20,13 +20,9 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN!,
 });
 
-function getKey(mode: "practice" | "tournament") {
-  return `leaderboard:${mode}:${getWeekKey()}`;
-}
-
-function getBestKey(mode: "practice" | "tournament", fid: number) {
-  return `leaderboard:${mode}:${getWeekKey()}:best:${fid}`;
-}
+// ---------- Key Strategy ----------
+// Tournament: weekly (Monday 00:00 UTC key)
+// Practice: all-time (never resets)
 
 function getWeekKey() {
   const now = new Date();
@@ -51,15 +47,41 @@ function getWeekKey() {
   return `${y}-${m}-${d}`;
 }
 
+function getKey(mode: "practice" | "tournament") {
+  if (mode === "practice") return `leaderboard:practice:all`;
+  return `leaderboard:tournament:${getWeekKey()}`;
+}
+
+function getBestKey(mode: "practice" | "tournament", fid: number) {
+  if (mode === "practice") return `leaderboard:practice:best:${fid}`;
+  return `leaderboard:tournament:${getWeekKey()}:best:${fid}`;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isLeaderboardEntry(v: unknown): v is LeaderboardEntry {
+  if (!isPlainObject(v)) return false;
+  return (
+    typeof v.fid === "number" &&
+    typeof v.address === "string" &&
+    typeof v.score === "number" &&
+    typeof v.mergeCount === "number" &&
+    typeof v.highestLevel === "number" &&
+    typeof v.playedAt === "number"
+  );
+}
+
 export async function saveScore(
   mode: "practice" | "tournament",
   entry: LeaderboardEntry
 ) {
   const bestKey = getBestKey(mode, entry.fid);
-  const prev = await redis.get<LeaderboardEntry>(bestKey);
+  const prev = await redis.get<unknown>(bestKey);
 
   // keep higher score only
-  if (prev && prev.score >= entry.score) {
+  if (prev && isLeaderboardEntry(prev) && prev.score >= entry.score) {
     return;
   }
 
@@ -72,14 +94,13 @@ export async function saveScore(
   });
 }
 
-function parseAllEntries(all: Record<string, any> | null | undefined) {
+function parseAllEntries(all: Record<string, string> | null | undefined) {
   const entries: LeaderboardEntry[] = Object.values(all || {})
     .map((v) => {
       try {
-        if (typeof v === "object" && v !== null) return v as unknown as LeaderboardEntry;
-        if (typeof v === "string") return JSON.parse(v) as LeaderboardEntry;
-        return null;
-      } catch (_e) {
+        const parsed = typeof v === "string" ? JSON.parse(v) : v;
+        return isLeaderboardEntry(parsed) ? parsed : null;
+      } catch {
         return null;
       }
     })
@@ -89,7 +110,7 @@ function parseAllEntries(all: Record<string, any> | null | undefined) {
   return entries;
 }
 
-// ✅ Genel leaderboard: Top N (varsayılan 500/1000 gibi)
+// ✅ Genel leaderboard: Top N
 export async function getLeaderboard(
   mode: "practice" | "tournament",
   limit = 500
@@ -98,11 +119,11 @@ export async function getLeaderboard(
   const all = await redis.hgetall<Record<string, string>>(key);
   const entries = parseAllEntries(all);
 
-  const safeLimit = Math.max(1, Math.min(1000, limit)); // 1..1000 arası
+  const safeLimit = Math.max(1, Math.min(1000, limit)); // 1..1000
   return entries.slice(0, safeLimit);
 }
 
-// ✅ ÖDÜL / payout tarafı: Top5 aynen kalsın (bozma)
+// ✅ ÖDÜL / payout tarafı: Top5
 export async function getTop5(mode: "practice" | "tournament") {
   return getLeaderboard(mode, 5);
 }
@@ -116,8 +137,8 @@ export async function getPlayerBestScore(
   fid: number
 ) {
   const bestKey = getBestKey(mode, fid);
-  const best = await redis.get<LeaderboardEntry>(bestKey);
-  return best || null;
+  const best = await redis.get<unknown>(bestKey);
+  return best && isLeaderboardEntry(best) ? best : null;
 }
 
 async function fetchProfilesBatch(fids: number[]) {
@@ -144,7 +165,7 @@ async function fetchProfilesBatch(fids: number[]) {
       map[u.fid] = u;
     }
     return map;
-  } catch (_e) {
+  } catch {
     return {};
   }
 }
