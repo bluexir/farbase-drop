@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { Redis } from "@upstash/redis";
 import { getTop5Tournament } from "@/lib/leaderboard";
+
+export const dynamic = "force-dynamic";
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
 
 const CONTRACT_ABI = [
   {
@@ -22,13 +30,46 @@ const CONTRACT_ABI = [
   },
 ];
 
-const REFERENCE_WEEK_START = new Date("2025-02-04T14:00:00Z").getTime();
+// Leaderboard.ts ile aynı mantık: UTC Pazartesi 00:00 başlangıç anahtarı
+function getWeekKey() {
+  const now = new Date();
+  const utc = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      0,
+      0,
+      0,
+      0
+    )
+  );
+  const day = utc.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  utc.setUTCDate(utc.getUTCDate() - diffToMonday);
 
-function getWeekNumber(): number {
-  const now = Date.now();
-  const diffMs = now - REFERENCE_WEEK_START;
-  const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
-  return diffWeeks + 1;
+  const y = utc.getUTCFullYear();
+  const m = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(utc.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function uniqValidAddresses(addrs: string[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const a of addrs) {
+    if (!a || typeof a !== "string") continue;
+    if (!ethers.isAddress(a)) continue;
+
+    const ca = ethers.getAddress(a);
+    if (ca === ethers.ZeroAddress) continue;
+    if (seen.has(ca)) continue;
+
+    seen.add(ca);
+    out.push(ca);
+  }
+  return out;
 }
 
 export async function GET(request: Request) {
@@ -40,8 +81,6 @@ export async function GET(request: Request) {
   try {
     const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
     const contractAddress = process.env.CONTRACT_ADDRESS;
-
-    // USDC address can be stored either as NEXT_PUBLIC_USDC_ADDRESS or USDC_ADDRESS
     const usdcAddressRaw =
       process.env.NEXT_PUBLIC_USDC_ADDRESS || process.env.USDC_ADDRESS;
 
@@ -60,70 +99,73 @@ export async function GET(request: Request) {
     }
 
     if (!ethers.isAddress(contractAddress)) {
-      return NextResponse.json(
-        { error: "Invalid CONTRACT_ADDRESS" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Invalid CONTRACT_ADDRESS" }, { status: 500 });
     }
 
     if (!ethers.isAddress(usdcAddressRaw)) {
-      return NextResponse.json(
-        { error: "Invalid USDC address env var" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Invalid USDC address env var" }, { status: 500 });
     }
 
     const usdcAddress = ethers.getAddress(usdcAddressRaw);
 
     const provider = new ethers.JsonRpcProvider("https://mainnet.base.org");
     const wallet = new ethers.Wallet(privateKey, provider);
-    const contract = new ethers.Contract(
-      contractAddress,
-      CONTRACT_ABI,
-      wallet
-    );
+    const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, wallet);
 
-    // Pool = token balance held by the contract (as defined by getPool)
+    // Pool kontrolü
     const poolBalance: bigint = await contract.getPool(usdcAddress);
-if (poolBalance === BigInt(0)) {
+    if (poolBalance === BigInt(0)) {
       return NextResponse.json(
-        { message: "No pool to distribute", pool: "0" },
+        { message: "No pool to distribute", poolBefore: "0" },
         { status: 200 }
       );
     }
 
+    // Aynı hafta ikinci kez dağıtma (idempotent)
+    const weekKey = getWeekKey();
+    const paidKey = `payout:done:${weekKey}`;
+    const alreadyPaid = await redis.get<number>(paidKey);
+    if (alreadyPaid) {
+      return NextResponse.json(
+        { message: "Already distributed for this week", weekKey },
+        { status: 200 }
+      );
+    }
+
+    // Winner adayları: leaderboard top5
     const top5 = await getTop5Tournament();
+    const candidateAddrs = (top5 || []).map((x: any) => x?.address).filter(Boolean);
 
-    // IMPORTANT: do NOT pad with ZeroAddress; only include real winners
-    const winners = (top5 || [])
-      .map((x: any) => x?.address)
-      .filter((addr: any) => typeof addr === "string" && ethers.isAddress(addr))
-      .map((addr: string) => ethers.getAddress(addr))
-      .filter((addr: string) => addr !== ethers.ZeroAddress);
+    const winners = uniqValidAddresses(candidateAddrs);
 
-    if (winners.length === 0) {
+    // Kontrat: "exactly 5 winners" istiyor → 5 yoksa dağıtma
+    if (winners.length < 5) {
       return NextResponse.json(
         {
-          message: "Pool exists but no winners found (skipping distribution)",
+          message: "Not enough unique winners yet (need 5). Skipping distribution.",
+          weekKey,
+          uniqueWinnersFound: winners.length,
           poolBefore: poolBalance.toString(),
         },
         { status: 200 }
       );
     }
 
-    const weekNumber = getWeekNumber();
-    const isFourthWeek = weekNumber % 4 === 0;
+    // Tam 5 winner gönder
+    const finalWinners = winners.slice(0, 5);
 
-    const tx = await contract.autoDistributePrizes(usdcAddress, winners);
+    const tx = await contract.autoDistributePrizes(usdcAddress, finalWinners);
     const receipt = await tx.wait();
+
+    // Ödeme tamamlandı flag (tekrar dağıtmasın)
+    await redis.set(paidKey, 1);
 
     return NextResponse.json(
       {
         success: true,
-        week: weekNumber,
-        isFourthWeek,
+        weekKey,
         token: usdcAddress,
-        winners,
+        winners: finalWinners,
         txHash: receipt.hash,
         poolBefore: poolBalance.toString(),
       },
