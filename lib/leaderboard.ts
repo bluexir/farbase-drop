@@ -20,10 +20,7 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN!,
 });
 
-// ---------- Key Strategy ----------
-// Tournament: weekly (Monday 00:00 UTC key)
-// Practice: all-time (never resets)
-
+// ---------- Week Key (UTC Monday 00:00) ----------
 function getWeekKey() {
   const now = new Date();
   const utc = new Date(
@@ -47,14 +44,36 @@ function getWeekKey() {
   return `${y}-${m}-${d}`;
 }
 
-function getKey(mode: "practice" | "tournament") {
-  if (mode === "practice") return `leaderboard:practice:all`;
+// ---------- Key Strategy ----------
+// Tournament: weekly
+// Practice: all-time (never resets) + legacy weekly (for recovery/migration)
+
+function practiceAllKey() {
+  return `leaderboard:practice:all`;
+}
+
+function practiceLegacyWeekKey() {
+  // This is where your existing scores were stored before the change
+  return `leaderboard:practice:${getWeekKey()}`;
+}
+
+function tournamentWeekKey() {
   return `leaderboard:tournament:${getWeekKey()}`;
+}
+
+function getKey(mode: "practice" | "tournament") {
+  if (mode === "practice") return practiceAllKey();
+  return tournamentWeekKey();
 }
 
 function getBestKey(mode: "practice" | "tournament", fid: number) {
   if (mode === "practice") return `leaderboard:practice:best:${fid}`;
   return `leaderboard:tournament:${getWeekKey()}:best:${fid}`;
+}
+
+// Legacy best (older version wrote weekly best)
+function getLegacyBestKeyForPractice(fid: number) {
+  return `leaderboard:practice:${getWeekKey()}:best:${fid}`;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -73,27 +92,6 @@ function isLeaderboardEntry(v: unknown): v is LeaderboardEntry {
   );
 }
 
-export async function saveScore(
-  mode: "practice" | "tournament",
-  entry: LeaderboardEntry
-) {
-  const bestKey = getBestKey(mode, entry.fid);
-  const prev = await redis.get<unknown>(bestKey);
-
-  // keep higher score only
-  if (prev && isLeaderboardEntry(prev) && prev.score >= entry.score) {
-    return;
-  }
-
-  await redis.set(bestKey, entry);
-
-  const key = getKey(mode);
-  // store as hash map by fid
-  await redis.hset(key, {
-    [String(entry.fid)]: JSON.stringify(entry),
-  });
-}
-
 function parseAllEntries(all: Record<string, string> | null | undefined) {
   const entries: LeaderboardEntry[] = Object.values(all || {})
     .map((v) => {
@@ -110,20 +108,99 @@ function parseAllEntries(all: Record<string, string> | null | undefined) {
   return entries;
 }
 
-// ✅ Genel leaderboard: Top N
+function mergeBestByFid(a: LeaderboardEntry[], b: LeaderboardEntry[]) {
+  const map = new Map<number, LeaderboardEntry>();
+  for (const e of a) map.set(e.fid, e);
+  for (const e of b) {
+    const prev = map.get(e.fid);
+    if (!prev || e.score > prev.score) map.set(e.fid, e);
+  }
+  const out = Array.from(map.values());
+  out.sort((x, y) => y.score - x.score);
+  return out;
+}
+
+// ---------- SAVE ----------
+export async function saveScore(
+  mode: "practice" | "tournament",
+  entry: LeaderboardEntry
+) {
+  // 1) best key
+  const bestKey = getBestKey(mode, entry.fid);
+  const prev = await redis.get<unknown>(bestKey);
+
+  if (prev && isLeaderboardEntry(prev) && prev.score >= entry.score) {
+    // higher already exists
+  } else {
+    await redis.set(bestKey, entry);
+  }
+
+  // 2) leaderboard hash (by fid)
+  const key = getKey(mode);
+  await redis.hset(key, { [String(entry.fid)]: JSON.stringify(entry) });
+
+  // 3) Practice legacy write (optional but safe for transition)
+  if (mode === "practice") {
+    const legacyKey = practiceLegacyWeekKey();
+    await redis.hset(legacyKey, { [String(entry.fid)]: JSON.stringify(entry) });
+
+    const legacyBest = getLegacyBestKeyForPractice(entry.fid);
+    const prevLegacy = await redis.get<unknown>(legacyBest);
+    if (!prevLegacy || (isLeaderboardEntry(prevLegacy) && prevLegacy.score < entry.score)) {
+      await redis.set(legacyBest, entry);
+    }
+  }
+}
+
+// ---------- READ ----------
 export async function getLeaderboard(
   mode: "practice" | "tournament",
   limit = 500
 ) {
-  const key = getKey(mode);
-  const all = await redis.hgetall<Record<string, string>>(key);
-  const entries = parseAllEntries(all);
+  const safeLimit = Math.max(1, Math.min(1000, limit));
 
-  const safeLimit = Math.max(1, Math.min(1000, limit)); // 1..1000
-  return entries.slice(0, safeLimit);
+  // Tournament: unchanged
+  if (mode === "tournament") {
+    const all = await redis.hgetall<Record<string, string>>(getKey(mode));
+    const entries = parseAllEntries(all);
+    return entries.slice(0, safeLimit);
+  }
+
+  // Practice: read ALL-TIME + legacy-week, then merge best by fid
+  const allKey = practiceAllKey();
+  const legacyKey = practiceLegacyWeekKey();
+
+  const allHash = await redis.hgetall<Record<string, string>>(allKey);
+  const allEntries = parseAllEntries(allHash);
+
+  const legacyHash = await redis.hgetall<Record<string, string>>(legacyKey);
+  const legacyEntries = parseAllEntries(legacyHash);
+
+  // If all-time is empty but legacy has data: MIGRATE ONCE (safe)
+  if (allEntries.length === 0 && legacyEntries.length > 0) {
+    const payload: Record<string, string> = {};
+    for (const e of legacyEntries) payload[String(e.fid)] = JSON.stringify(e);
+    await redis.hset(allKey, payload);
+
+    // Also migrate best keys to all-time best keys
+    for (const e of legacyEntries) {
+      const bestKey = getBestKey("practice", e.fid);
+      const prev = await redis.get<unknown>(bestKey);
+      if (!prev || (isLeaderboardEntry(prev) && prev.score < e.score)) {
+        await redis.set(bestKey, e);
+      }
+    }
+
+    // re-read merged result from migrated data
+    const merged = mergeBestByFid(legacyEntries, []);
+    return merged.slice(0, safeLimit);
+  }
+
+  const merged = mergeBestByFid(allEntries, legacyEntries);
+  return merged.slice(0, safeLimit);
 }
 
-// ✅ ÖDÜL / payout tarafı: Top5
+// payout tarafı için top5 aynı kalsın
 export async function getTop5(mode: "practice" | "tournament") {
   return getLeaderboard(mode, 5);
 }
@@ -138,9 +215,23 @@ export async function getPlayerBestScore(
 ) {
   const bestKey = getBestKey(mode, fid);
   const best = await redis.get<unknown>(bestKey);
-  return best && isLeaderboardEntry(best) ? best : null;
+  if (best && isLeaderboardEntry(best)) return best;
+
+  // Practice legacy fallback (only if needed)
+  if (mode === "practice") {
+    const legacyBestKey = getLegacyBestKeyForPractice(fid);
+    const legacy = await redis.get<unknown>(legacyBestKey);
+    if (legacy && isLeaderboardEntry(legacy)) {
+      // migrate into new best
+      await redis.set(bestKey, legacy);
+      return legacy;
+    }
+  }
+
+  return null;
 }
 
+// ---------- NEYNAR ENRICH ----------
 async function fetchProfilesBatch(fids: number[]) {
   const apiKey = process.env.NEYNAR_API_KEY;
   if (!apiKey || fids.length === 0) return {};
@@ -161,9 +252,7 @@ async function fetchProfilesBatch(fids: number[]) {
 
     const users = data?.users || [];
     const map: Record<number, any> = {};
-    for (const u of users) {
-      map[u.fid] = u;
-    }
+    for (const u of users) map[u.fid] = u;
     return map;
   } catch {
     return {};
@@ -171,7 +260,6 @@ async function fetchProfilesBatch(fids: number[]) {
 }
 
 async function fetchProfiles(fids: number[]) {
-  // ✅ Büyük listelerde patlamasın diye batch (100’er)
   const map: Record<number, any> = {};
   const chunkSize = 100;
 
