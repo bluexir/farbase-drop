@@ -420,7 +420,7 @@ export default function Home() {
               mode={screen}
               fid={fid}
               address={address}
-              onGameOver={async (log: GameLog) => {
+           onGameOver={async (mergeCount: number, highestLevel: number, log: GameLog) => { 
                 setGameOver(true);
 
                 const finalScore = calculateScoreFromLog(log);
