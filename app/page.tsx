@@ -419,7 +419,6 @@ export default function Home() {
               key={gameKey}
               mode={screen}
               fid={fid}
-              address={address}
            onGameOver={async (mergeCount: number, highestLevel: number, log: GameLog) => { 
                 setGameOver(true);
 
