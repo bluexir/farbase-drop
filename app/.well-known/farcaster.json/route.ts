@@ -23,7 +23,7 @@ export async function GET() {
       ],
 
       // Allow indexing / discovery surfaces
-      noindex: false,
+     
 
       buttonTitle: "Play Now",
       splashImageUrl: "https://farbase-drop.vercel.app/splash.png",
