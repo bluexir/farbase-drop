@@ -35,131 +35,51 @@ export default function Home() {
   const [mergeCount, setMergeCount] = useState(0);
   const [highestLevel, setHighestLevel] = useState(1);
 
-  const [gameKey, setGameKey] = useState(0);
-  const [currentMode, setCurrentMode] = useState<"practice" | "tournament">("practice");
   const [scoreSaved, setScoreSaved] = useState(false);
   const [scoreSaveError, setScoreSaveError] = useState<string | null>(null);
+
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+
   const [isNewBest, setIsNewBest] = useState(false);
 
+  const [gameKey, setGameKey] = useState(0);
+
+  const [currentMode, setCurrentMode] = useState<"practice" | "tournament">("practice");
+
   useEffect(() => {
-    async function init() {
+    let cancelled = false;
+
+    (async () => {
       try {
         const context = await sdk.context;
-        setFid(context.user.fid);
-        await sdk.actions.ready();
-        try {
-          await sdk.actions.addMiniApp();
-        } catch (_e) {}
+        if (cancelled) return;
 
-        // Admin kontrolu — menu acilir acilmaz admin butonu gozuksun
-        try {
-          const { token } = await sdk.quickAuth.getToken();
-          const res = await fetch("/api/remaining-attempts?mode=practice", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const data = (await res.json()) as AttemptsResponse;
-            if (data.isAdmin) setIsAdmin(true);
+        const fidFromContext = context?.user?.fid ?? null;
+        setFid(fidFromContext);
+
+        const provider = await sdk.wallet.getEthereumProvider();
+        if (provider) {
+          try {
+            const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+            const currentAddress = accounts?.[0] ?? null;
+            if (currentAddress) setAddress(currentAddress);
+          } catch {
+            // ignore
           }
-        } catch (_e) {
-          // Token alinamazsa admin kontrolu atlanir
         }
       } catch (e) {
-        console.error("SDK init error:", e);
+        console.error("Failed to load sdk context:", e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-    init();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Kumulatif skor: her merge'de olusan coin'in score'u eklenir
-  const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
-    const coinData = getCoinByLevel(toLevel);
-    const increment = coinData?.score || 0;
-    setScore((prev) => prev + increment);
-    setMergeCount((prev) => prev + 1);
-    setHighestLevel((prev) => Math.max(prev, toLevel));
-  }, []);
-
-  const handleGameOver = useCallback(
-    async (finalMerges: number, finalHighest: number, gameLog: GameLog) => {
-      setGameOver(true);
-
-      // Kumulatif skor: game log'dan hesapla (server ile ayni formul)
-      const calculated = calculateScoreFromLog(gameLog);
-      const finalScore = calculated.score;
-
-      setScore(finalScore);
-      setMergeCount(finalMerges);
-      setHighestLevel(finalHighest);
-      setScoreSaved(false);
-      setScoreSaveError(null);
-      setRemainingAttempts(null);
-      setIsNewBest(false);
-
-      // Practice modunda wallet bagli olmayabilir
-      const currentAddress = address || "0x0000000000000000000000000000000000000000";
-
-      try {
-        const res = await sdk.quickAuth.fetch("/api/save-score", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            address: currentAddress,
-            score: finalScore,
-            mergeCount: finalMerges,
-            highestLevel: finalHighest,
-            mode: currentMode,
-            gameLog,
-            sessionId: `${fid}-${Date.now()}`,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-          setScoreSaved(true);
-          if (typeof data.remaining === "number") {
-            setRemainingAttempts(data.remaining);
-          }
-          if (data.isNewBest) {
-            setIsNewBest(true);
-          }
-        } else {
-          setScoreSaveError(data.error || "Failed to save score");
-        }
-      } catch (e) {
-        console.error("Save score error:", e);
-        setScoreSaveError("Network error — score not saved");
-      }
-    },
-    [fid, address, currentMode]
-  );
-
-  const handleCast = useCallback(async () => {
-    try {
-      const coinData = getCoinByLevel(highestLevel);
-      const miniappUrl =
-        process.env.NEXT_PUBLIC_MINIAPP_URL ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        "https://farbase-drop.vercel.app";
-
-      const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
-        coinData?.symbol || "?"
-      }\n\nPlay now: ${miniappUrl}\n\nBy @bluexir`;
-
-      await sdk.actions.composeCast({
-        text,
-        embeds: [miniappUrl],
-      });
-    } catch (e) {
-      console.error("Cast error:", e);
-    }
-  }, [score, highestLevel]);
-
-  const resetGameStateAndStart = useCallback((targetScreen: Screen) => {
+  const resetGameStateAndStart = useCallback((targetMode: "practice" | "tournament") => {
     setGameOver(false);
     setScore(0);
     setMergeCount(0);
@@ -169,7 +89,7 @@ export default function Home() {
     setRemainingAttempts(null);
     setIsNewBest(false);
     setGameKey((k) => k + 1);
-    setScreen(targetScreen);
+    setScreen(targetMode);
   }, []);
 
   const startGame = useCallback(
@@ -192,11 +112,11 @@ export default function Home() {
         console.error("Failed to check tournament status:", e);
       }
 
-      // Farcaster wallet
+      // Farcaster wallet (Farcaster clients + Base App)
       try {
         const provider = await sdk.wallet.getEthereumProvider();
         if (!provider) {
-          console.error("No Farcaster provider");
+          console.error("No provider");
           return;
         }
 
@@ -220,6 +140,53 @@ export default function Home() {
           return;
         }
 
+        const getISOWeekKeyUTC = () => {
+          const d = new Date();
+          // ISO week date weeks start on Monday
+          const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+          const dayNr = (target.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+          target.setUTCDate(target.getUTCDate() - dayNr + 3); // Thu of current week
+          const firstThu = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+          const firstDayNr = (firstThu.getUTCDay() + 6) % 7;
+          firstThu.setUTCDate(firstThu.getUTCDate() - firstDayNr + 3);
+          const weekNo = 1 + Math.round((target.getTime() - firstThu.getTime()) / 604800000);
+          const year = target.getUTCFullYear();
+          return `${year}-W${String(weekNo).padStart(2, "0")}`;
+        };
+
+        const pendingKey = `farbase:pendingTournament:${currentAddress.toLowerCase()}:${getISOWeekKeyUTC()}`;
+
+        const tryCompleteServerEntry = async () => {
+          const res = await sdk.quickAuth.fetch("/api/create-entry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "tournament", address: currentAddress }),
+          });
+          if (!res.ok) {
+            const msg = await res.text().catch(() => "");
+            throw new Error(`create-entry failed: ${res.status} ${msg}`);
+          }
+        };
+
+        // Eğer daha önce ödeme yapıldı ama entry yazılamadıysa, tekrar ödeme almadan entry'yi tamamla
+        try {
+          const raw = localStorage.getItem(pendingKey);
+          if (raw) {
+            const pending = JSON.parse(raw) as { createdAt: number };
+            // 24 saatten eski pending'i yok say
+            if (pending?.createdAt && Date.now() - pending.createdAt < 24 * 60 * 60 * 1000) {
+              await tryCompleteServerEntry();
+              localStorage.removeItem(pendingKey);
+              resetGameStateAndStart("tournament");
+              return;
+            } else {
+              localStorage.removeItem(pendingKey);
+            }
+          }
+        } catch {
+          // ignore
+        }
+
         // Yeni entry satin al (admin dahil herkes oder)
         const USDC_ADDRESS =
           process.env.NEXT_PUBLIC_USDC_ADDRESS ||
@@ -236,7 +203,7 @@ export default function Home() {
           const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
           const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-          for (let attempts = 0; attempts < 60; attempts++) {
+          for (let attempts = 0; attempts < 90; attempts++) {
             const res = await fetch(rpc, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -262,7 +229,7 @@ export default function Home() {
 
         const { ethers } = await import("ethers");
 
-        // 1) Approve USDC
+        // calldata
         const usdcInterface = new ethers.Interface([
           "function approve(address spender, uint256 amount)",
         ]);
@@ -271,40 +238,118 @@ export default function Home() {
           1000000,
         ]);
 
-        const approveTxHash = (await provider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: currentAddress as `0x${string}`,
-              to: USDC_ADDRESS as `0x${string}`,
-              data: approveData as `0x${string}`,
-            },
-          ],
-        })) as `0x${string}`;
-        await waitForTransaction(approveTxHash);
-
-        // 2) Enter tournament
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        const entryTxHash = (await provider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: currentAddress as `0x${string}`,
-              to: CONTRACT_ADDRESS as `0x${string}`,
-              data: enterData as `0x${string}`,
-            },
-          ],
-        })) as `0x${string}`;
-        await waitForTransaction(entryTxHash);
+        // Prefer EIP-5792 batching (single prompt) when available
+        let usedBatch = false;
+        try {
+          const caps = (await provider.request({
+            method: "wallet_getCapabilities",
+            params: [currentAddress],
+          })) as any;
 
-        // 3) Server entry
-        await sdk.quickAuth.fetch("/api/create-entry", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "tournament", address: currentAddress }),
-        });
+          const baseCaps = caps?.["0x2105"];
+          const atomic = baseCaps?.atomic?.supported;
+          const canBatch = atomic === "supported" || atomic === "ready";
+
+          if (canBatch) {
+            const sendRes = (await provider.request({
+              method: "wallet_sendCalls",
+              params: [
+                {
+                  version: "2.0.0",
+                  from: currentAddress as `0x${string}`,
+                  chainId: "0x2105",
+                  atomicRequired: false,
+                  calls: [
+                    {
+                      to: USDC_ADDRESS as `0x${string}`,
+                      value: "0x0",
+                      data: approveData as `0x${string}`,
+                    },
+                    {
+                      to: CONTRACT_ADDRESS as `0x${string}`,
+                      value: "0x0",
+                      data: enterData as `0x${string}`,
+                    },
+                  ],
+                },
+              ],
+            })) as any;
+
+            const callsId =
+              typeof sendRes === "string"
+                ? sendRes
+                : (sendRes?.batchId || sendRes?.callsId || sendRes?.id) as string | undefined;
+
+            if (!callsId) throw new Error("wallet_sendCalls did not return callsId");
+
+            // pending guard: ödeme alındıysa entry'yi tekrar dene, tekrar ödeme alma
+            localStorage.setItem(pendingKey, JSON.stringify({ createdAt: Date.now(), callsId }));
+
+            // Track batch status (Base App friendly)
+            const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+            let confirmed = false;
+            for (let i = 0; i < 90; i++) {
+              const status = (await provider.request({
+                method: "wallet_getCallsStatus",
+                params: [callsId],
+              })) as any;
+
+              if (status?.status === 200) {
+                confirmed = true;
+                break;
+              }
+              if (status?.status && status.status !== 100) {
+                throw new Error(`Batch failed: ${status.status}`);
+              }
+              await sleep(1500);
+            }
+            if (!confirmed) {
+              throw new Error("Batch confirmation timeout");
+            }
+
+            usedBatch = true;
+          }
+        } catch {
+          usedBatch = false;
+        }
+
+        if (!usedBatch) {
+          // 1) Approve USDC
+          const approveTxHash = (await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: currentAddress as `0x${string}`,
+                to: USDC_ADDRESS as `0x${string}`,
+                data: approveData as `0x${string}`,
+              },
+            ],
+          })) as `0x${string}`;
+          await waitForTransaction(approveTxHash);
+
+          // 2) Enter tournament
+          const entryTxHash = (await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: currentAddress as `0x${string}`,
+                to: CONTRACT_ADDRESS as `0x${string}`,
+                data: enterData as `0x${string}`,
+              },
+            ],
+          })) as `0x${string}`;
+          await waitForTransaction(entryTxHash);
+
+          // pending guard (tx başarılıysa)
+          localStorage.setItem(pendingKey, JSON.stringify({ createdAt: Date.now(), entryTxHash }));
+        }
+
+        // 3) Server entry (idempotent client-side retry)
+        await tryCompleteServerEntry();
+        localStorage.removeItem(pendingKey);
 
         resetGameStateAndStart("tournament");
       } catch (e) {
@@ -358,60 +403,98 @@ export default function Home() {
 
       {screen === "leaderboard" && <Leaderboard fid={fid} onBack={() => setScreen("menu")} />}
 
-      {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
+      {screen === "admin" && isAdmin && <AdminPanel fid={fid} onBack={() => setScreen("menu")} />}
 
       {(screen === "practice" || screen === "tournament") && (
-        <div
-          style={{
-            height: "100vh",
-            overflow: "hidden",
-            background: "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          {!gameOver ? (
-            <>
-              <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
-                <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
-              </div>
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "flex-start",
-                  width: "100%",
-                }}
-              >
-                <GameCanvas
-                  key={gameKey}
-                  mode={screen}
-                  gameStarted={true}
-                  fid={fid}
-                  sessionId={`${fid}-${gameKey}`}
-                  onMerge={handleMerge}
-                  onGameOver={handleGameOver}
-                />
-              </div>
-            </>
-          ) : (
-            <GameOver
-              score={score}
-              highestLevel={highestLevel}
-              mergeCount={mergeCount}
-              scoreSaved={scoreSaved}
-              scoreSaveError={scoreSaveError}
-              mode={currentMode}
-              remaining={remainingAttempts}
-              isNewBest={isNewBest}
-              onRestart={handleRestart}
-              onMenu={() => setScreen("menu")}
-              onCast={handleCast}
+        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+          <Scoreboard
+            mode={screen}
+            score={score}
+            mergeCount={mergeCount}
+            highestLevel={highestLevel}
+            remainingAttempts={remainingAttempts}
+          />
+
+          <div style={{ flex: 1, position: "relative" }}>
+            <GameCanvas
+              key={gameKey}
+              mode={screen}
+              fid={fid}
+              address={address}
+              onGameOver={async (log: GameLog) => {
+                setGameOver(true);
+
+                const finalScore = calculateScoreFromLog(log);
+                setScore(finalScore);
+
+                // highest level
+                const maxLevel = log.reduce((acc, entry) => {
+                  const coin = getCoinByLevel(entry.level);
+                  return Math.max(acc, coin.level);
+                }, 1);
+                setHighestLevel(maxLevel);
+
+                // merge count
+                const merges = log.filter((e) => e.type === "merge").length;
+                setMergeCount(merges);
+
+                // save score
+                try {
+                  setScoreSaved(false);
+                  setScoreSaveError(null);
+
+                  const res = await sdk.quickAuth.fetch("/api/save-score", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      mode: screen,
+                      score: finalScore,
+                      mergeCount: merges,
+                      highestLevel: maxLevel,
+                      log,
+                      address,
+                    }),
+                  });
+
+                  const json = await res.json();
+                  setScoreSaved(true);
+                  setIsNewBest(!!json?.isNewBest);
+
+                  if (typeof json?.remaining === "number") {
+                    setRemainingAttempts(json.remaining);
+                  }
+                } catch (e: any) {
+                  console.error("Failed to save score:", e);
+                  setScoreSaveError(e?.message || "Failed to save score");
+                }
+              }}
             />
-          )}
+
+            {gameOver && (
+              <GameOver
+                mode={screen}
+                score={score}
+                mergeCount={mergeCount}
+                highestLevel={highestLevel}
+                scoreSaved={scoreSaved}
+                scoreSaveError={scoreSaveError}
+                remainingAttempts={remainingAttempts}
+                isNewBest={isNewBest}
+                onRestart={() => {
+                  handleRestart();
+                  if (currentMode === "practice") {
+                    resetGameStateAndStart("practice");
+                  } else {
+                    resetGameStateAndStart("tournament");
+                  }
+                }}
+                onBackToMenu={() => {
+                  handleRestart();
+                  setScreen("menu");
+                }}
+              />
+            )}
+          </div>
         </div>
       )}
     </div>
