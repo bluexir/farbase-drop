@@ -261,7 +261,6 @@ export default function Home() {
                   version: "2.0.0",
                   from: currentAddress as `0x${string}`,
                   chainId: "0x2105",
-                  atomicRequired: false,
                   calls: [
                     {
                       to: USDC_ADDRESS as `0x${string}`,
