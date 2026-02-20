@@ -246,7 +246,7 @@ export default function Home() {
         try {
           const caps = (await provider.request({
             method: "wallet_getCapabilities",
-            params: [currentAddress],
+        params: [currentAddress as `0x${string}`],
           })) as any;
 
           const baseCaps = caps?.["0x2105"];
