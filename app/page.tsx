@@ -402,7 +402,7 @@ export default function Home() {
 
       {screen === "leaderboard" && <Leaderboard fid={fid} onBack={() => setScreen("menu")} />}
 
-      {screen === "admin" && isAdmin && <AdminPanel fid={fid} onBack={() => setScreen("menu")} />}
+      {screen === "admin" && isAdmin && <AdminPanel onBack={() => setScreen("menu")} />}
 
       {(screen === "practice" || screen === "tournament") && (
         <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
