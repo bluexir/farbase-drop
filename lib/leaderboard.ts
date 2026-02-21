@@ -83,12 +83,12 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 function isLeaderboardEntry(v: unknown): v is LeaderboardEntry {
   if (!isPlainObject(v)) return false;
   return (
-    typeof v.fid === "number" &&
-    typeof v.address === "string" &&
-    typeof v.score === "number" &&
-    typeof v.mergeCount === "number" &&
-    typeof v.highestLevel === "number" &&
-    typeof v.playedAt === "number"
+    typeof (v as any).fid === "number" &&
+    typeof (v as any).address === "string" &&
+    typeof (v as any).score === "number" &&
+    typeof (v as any).mergeCount === "number" &&
+    typeof (v as any).highestLevel === "number" &&
+    typeof (v as any).playedAt === "number"
   );
 }
 
@@ -120,43 +120,67 @@ function mergeBestByFid(a: LeaderboardEntry[], b: LeaderboardEntry[]) {
   return out;
 }
 
-// ---------- SAVE ----------
-export async function saveScore(
-  mode: "practice" | "tournament",
-  entry: LeaderboardEntry
-) {
-  // 1) best key
-  const bestKey = getBestKey(mode, entry.fid);
-  const prev = await redis.get<unknown>(bestKey);
+async function getHashEntryScore(key: string, fid: number): Promise<number | null> {
+  try {
+    const raw = await redis.hget<string>(key, String(fid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isLeaderboardEntry(parsed) ? parsed.score : null;
+  } catch {
+    return null;
+  }
+}
 
-  if (prev && isLeaderboardEntry(prev) && prev.score >= entry.score) {
-    // higher already exists
-  } else {
-    await redis.set(bestKey, entry);
+// ---------- SAVE ----------
+// ✅ Guarantee: leaderboard never goes DOWN.
+// We only write to hashes when the score is a NEW BEST for that mode.
+export async function saveScore(mode: "practice" | "tournament", entry: LeaderboardEntry) {
+  const fidStr = String(entry.fid);
+
+  // 1) Determine NEW BEST using bestKey (source of truth)
+  const bestKey = getBestKey(mode, entry.fid);
+  const prevBest = await redis.get<unknown>(bestKey);
+
+  const prevBestScore =
+    prevBest && isLeaderboardEntry(prevBest) ? prevBest.score : 0;
+
+  const isNewBest = entry.score > prevBestScore;
+
+  // If NOT new best, do NOT overwrite leaderboard hashes (prevents 5000 -> 50 regression)
+  if (!isNewBest) {
+    return;
   }
 
-  // 2) leaderboard hash (by fid)
-  const key = getKey(mode);
-  await redis.hset(key, { [String(entry.fid)]: JSON.stringify(entry) });
+  // 2) Update best key
+  await redis.set(bestKey, entry);
 
-  // 3) Practice legacy write (optional but safe for transition)
+  // 3) Update main leaderboard hash (by fid) ONLY when new best
+  const key = getKey(mode);
+  await redis.hset(key, { [fidStr]: JSON.stringify(entry) });
+
+  // 4) Practice legacy write (optional transition) — also ONLY when new best vs current legacy hash
   if (mode === "practice") {
     const legacyKey = practiceLegacyWeekKey();
-    await redis.hset(legacyKey, { [String(entry.fid)]: JSON.stringify(entry) });
+
+    // Don't downgrade legacy hash either
+    const legacyPrevScore = await getHashEntryScore(legacyKey, entry.fid);
+    if (legacyPrevScore === null || entry.score > legacyPrevScore) {
+      await redis.hset(legacyKey, { [fidStr]: JSON.stringify(entry) });
+    }
 
     const legacyBest = getLegacyBestKeyForPractice(entry.fid);
     const prevLegacy = await redis.get<unknown>(legacyBest);
-    if (!prevLegacy || (isLeaderboardEntry(prevLegacy) && prevLegacy.score < entry.score)) {
+    const prevLegacyScore =
+      prevLegacy && isLeaderboardEntry(prevLegacy) ? prevLegacy.score : 0;
+
+    if (entry.score > prevLegacyScore) {
       await redis.set(legacyBest, entry);
     }
   }
 }
 
 // ---------- READ ----------
-export async function getLeaderboard(
-  mode: "practice" | "tournament",
-  limit = 500
-) {
+export async function getLeaderboard(mode: "practice" | "tournament", limit = 500) {
   const safeLimit = Math.max(1, Math.min(1000, limit));
 
   // Tournament: unchanged
@@ -186,12 +210,12 @@ export async function getLeaderboard(
     for (const e of legacyEntries) {
       const bestKey = getBestKey("practice", e.fid);
       const prev = await redis.get<unknown>(bestKey);
-      if (!prev || (isLeaderboardEntry(prev) && prev.score < e.score)) {
+      const prevScore = prev && isLeaderboardEntry(prev) ? prev.score : 0;
+      if (e.score > prevScore) {
         await redis.set(bestKey, e);
       }
     }
 
-    // re-read merged result from migrated data
     const merged = mergeBestByFid(legacyEntries, []);
     return merged.slice(0, safeLimit);
   }
@@ -209,10 +233,7 @@ export async function getTop5Tournament() {
   return getTop5("tournament");
 }
 
-export async function getPlayerBestScore(
-  mode: "practice" | "tournament",
-  fid: number
-) {
+export async function getPlayerBestScore(mode: "practice" | "tournament", fid: number) {
   const bestKey = getBestKey(mode, fid);
   const best = await redis.get<unknown>(bestKey);
   if (best && isLeaderboardEntry(best)) return best;
