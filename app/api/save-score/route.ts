@@ -23,15 +23,7 @@ export async function POST(request: Request) {
     const fid = user.fid;
 
     const body = await request.json();
-    const {
-      address,
-      score,
-      mergeCount,
-      highestLevel,
-      mode,
-      gameLog,
-      sessionId,
-    } = body;
+    const { address, score, mergeCount, highestLevel, mode, gameLog, sessionId } = body;
 
     if (!address || !mode || !sessionId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -80,17 +72,15 @@ export async function POST(request: Request) {
     const attemptResult = await consumeAttempt(redis, mode, fid, admin);
 
     if (!attemptResult.ok) {
-      return NextResponse.json(
-        { error: attemptResult.error },
-        { status: 429 }
-      );
+      return NextResponse.json({ error: attemptResult.error }, { status: 429 });
     }
 
-    // Mevcut en iyi skor
+    // Mevcut en iyi skor (leaderboard overwrite'i engellemek icin kritik)
     const previousBest = await getPlayerBestScore(mode, fid);
-    const newBest = calculated.score > (previousBest?.score || 0);
+    const prevBestScore = previousBest?.score ?? 0;
+    const newBest = calculated.score > prevBestScore;
 
-    // Skoru kaydet
+    // Leaderboard entry (sadece yeni best ise kaydedecegiz)
     const entry: LeaderboardEntry = {
       fid,
       address,
@@ -100,7 +90,11 @@ export async function POST(request: Request) {
       playedAt: Date.now(),
     };
 
-    await saveScore(mode, entry);
+    // ✅ FIX: Daha dusuk skor, leaderboard'u EZMESIN
+    // Sadece yeni best ise saveScore()
+    if (newBest) {
+      await saveScore(mode, entry);
+    }
 
     // Kalan hak
     const remaining = await getRemainingAttempts(redis, mode, fid, admin);
