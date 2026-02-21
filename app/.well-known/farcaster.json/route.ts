@@ -13,18 +13,41 @@ export async function GET() {
       iconUrl: "https://farbase-drop.vercel.app/icon.png",
       homeUrl: "https://farbase-drop.vercel.app",
       imageUrl: "https://farbase-drop.vercel.app/image.png",
-
-      // Featured / preview assets
       heroImageUrl: "https://farbase-drop.vercel.app/hero.png",
       screenshotUrls: [
         "https://farbase-drop.vercel.app/ss/ss-1.png",
         "https://farbase-drop.vercel.app/ss/ss-2.png",
         "https://farbase-drop.vercel.app/ss/ss-3.png",
       ],
-
-      // Allow indexing / discovery surfaces
       noindex: false,
-
+      buttonTitle: "Play Now",
+      splashImageUrl: "https://farbase-drop.vercel.app/splash.png",
+      ogImageUrl: "https://farbase-drop.vercel.app/image.png",
+      splashBackgroundColor: "#0a0a1a",
+      webhookUrl: "https://farbase-drop.vercel.app/api/webhook",
+      subtitle: "Crypto Merge Game on Base",
+      description:
+        "Drop and merge crypto coins to score points. Practice free daily or enter weekly tournaments with USDC. Top 5 players win the prize pool. Built on Base mainnet.",
+      primaryCategory: "games",
+      tags: ["merge", "crypto", "game", "tournament", "base"],
+      tagline: "Drop, Merge, Win, USDC",
+      ogTitle: "FarBase Drop - Merge Win",
+      ogDescription:
+        "Drop and merge crypto coins. Compete in weekly tournaments and win USDC prizes on Base.",
+    },
+    miniapp: {
+      version: "1",
+      name: "FARBASE DROP",
+      iconUrl: "https://farbase-drop.vercel.app/icon.png",
+      homeUrl: "https://farbase-drop.vercel.app",
+      imageUrl: "https://farbase-drop.vercel.app/image.png",
+      heroImageUrl: "https://farbase-drop.vercel.app/hero.png",
+      screenshotUrls: [
+        "https://farbase-drop.vercel.app/ss/ss-1.png",
+        "https://farbase-drop.vercel.app/ss/ss-2.png",
+        "https://farbase-drop.vercel.app/ss/ss-3.png",
+      ],
+      noindex: false,
       buttonTitle: "Play Now",
       splashImageUrl: "https://farbase-drop.vercel.app/splash.png",
       ogImageUrl: "https://farbase-drop.vercel.app/image.png",
