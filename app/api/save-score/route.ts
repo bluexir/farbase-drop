@@ -75,12 +75,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: attemptResult.error }, { status: 429 });
     }
 
-    // Mevcut en iyi skor (leaderboard overwrite'i engellemek icin kritik)
-    const previousBest = await getPlayerBestScore(mode, fid);
-    const prevBestScore = previousBest?.score ?? 0;
-    const newBest = calculated.score > prevBestScore;
+    // BEFORE best (robust read)
+    const beforeBest = await getPlayerBestScore(mode, fid);
+    const beforeBestScore = beforeBest?.score ?? 0;
 
-    // Leaderboard entry (sadece yeni best ise kaydedecegiz)
     const entry: LeaderboardEntry = {
       fid,
       address,
@@ -90,13 +88,16 @@ export async function POST(request: Request) {
       playedAt: Date.now(),
     };
 
-    // ✅ FIX: Daha dusuk skor, leaderboard'u EZMESIN
-    // Sadece yeni best ise saveScore()
-    if (newBest) {
-      await saveScore(mode, entry);
-    }
+    // ✅ Always call saveScore.
+    // saveScore() itself guarantees: leaderboard never goes DOWN and WILL update when higher.
+    await saveScore(mode, entry);
 
-    // Kalan hak
+    // AFTER best (truth)
+    const afterBest = await getPlayerBestScore(mode, fid);
+    const afterBestScore = afterBest?.score ?? 0;
+
+    const isNewBest = calculated.score > beforeBestScore && afterBestScore === calculated.score;
+
     const remaining = await getRemainingAttempts(redis, mode, fid, admin);
 
     return NextResponse.json(
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
         success: true,
         verifiedScore: calculated.score,
         remaining,
-        isNewBest: newBest,
+        isNewBest,
       },
       { status: 200 }
     );
