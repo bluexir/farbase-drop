@@ -8,7 +8,7 @@ import GameOver from "@/components/GameOver";
 import MainMenu from "@/components/MainMenu";
 import Leaderboard from "@/components/Leaderboard";
 import AdminPanel from "@/components/AdminPanel";
-import { getCoinByLevel } from "@/lib/coins";
+import { getCoinByLevel, Platform } from "@/lib/coins";
 import { GameLog, calculateScoreFromLog } from "@/lib/game-log";
 
 type Screen = "menu" | "practice" | "tournament" | "leaderboard" | "admin";
@@ -26,7 +26,6 @@ type PendingPurchase = {
   createdAt: number;
   purchaseId: string;
   stage: "initiated" | "paid";
-  // optional debug
   method?: "batch" | "fallback";
 };
 
@@ -56,8 +55,18 @@ function genPurchaseId() {
   return `p_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function detectPlatformFromContext(ctx: any): Platform {
+  // Best-effort detection: we check any client/platform hints in context.
+  // If we see "base" anywhere in the client data, we treat it as Base App.
+  try {
+    const clientObj = ctx?.client ?? ctx?.frame?.client ?? ctx?.app?.client ?? ctx?.platform ?? ctx?.client?.platform ?? ctx?.client?.name;
+    const s = JSON.stringify(clientObj ?? "").toLowerCase();
+    if (s.includes("base")) return "base";
+  } catch {}
+  return "farcaster";
+}
+
 async function tryCreateEntryWithRetry(address: string, purchaseId: string) {
-  // create-entry: 200 success, 202 processing, others fail
   for (let i = 0; i < 8; i++) {
     const res = await sdk.quickAuth.fetch("/api/create-entry", {
       method: "POST",
@@ -73,8 +82,6 @@ async function tryCreateEntryWithRetry(address: string, purchaseId: string) {
     const data = await res.json().catch(() => ({}));
 
     if (res.ok && data?.success) return true;
-
-    // non-202 fail
     return false;
   }
   return false;
@@ -85,6 +92,8 @@ export default function Home() {
   const [address, setAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  const [platform, setPlatform] = useState<Platform>("farcaster");
 
   const [screen, setScreen] = useState<Screen>("menu");
   const [gameOver, setGameOver] = useState(false);
@@ -104,8 +113,11 @@ export default function Home() {
     async function init() {
       try {
         const context = await sdk.context;
+
         const maybeFid = context?.user?.fid;
         setFid(typeof maybeFid === "number" ? maybeFid : null);
+
+        setPlatform(detectPlatformFromContext(context));
 
         await sdk.actions.ready();
         try {
@@ -121,6 +133,7 @@ export default function Home() {
   }, []);
 
   const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
+    // scoring logic unchanged; platform only affects labels/skins
     const coinData = getCoinByLevel(toLevel);
     const increment = coinData?.score || 0;
     setScore((prev) => prev + increment);
@@ -184,7 +197,7 @@ export default function Home() {
 
   const handleCast = useCallback(async () => {
     try {
-      const coinData = getCoinByLevel(highestLevel);
+      const coinData = getCoinByLevel(highestLevel, platform);
       const miniappUrl =
         process.env.NEXT_PUBLIC_MINIAPP_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
@@ -198,7 +211,7 @@ export default function Home() {
     } catch (e) {
       console.error("Cast error:", e);
     }
-  }, [score, highestLevel]);
+  }, [score, highestLevel, platform]);
 
   const resetGameStateAndStart = useCallback((targetScreen: Screen) => {
     setGameOver(false);
@@ -222,7 +235,6 @@ export default function Home() {
         return;
       }
 
-      // Tournament requires FID (QuickAuth)
       if (fid === null) {
         console.error("Tournament requires FID (sign-in).");
         return;
@@ -254,19 +266,17 @@ export default function Home() {
         }
         setAddress(currentAddress);
 
-        // Switch to Base
         await provider.request({
           method: "wallet_switchEthereumChain",
           params: [{ chainId: "0x2105" }],
         });
 
-        // If already has attempts, start immediately
         if (hasAttempts) {
           resetGameStateAndStart("tournament");
           return;
         }
 
-        // --- Pending / Resume guard (prevents double charge) ---
+        // --- Pending / Resume guard ---
         const weekKey = getWeekKeyUTC();
         const pendingKey = `farbase:pendingTournament:${currentAddress.toLowerCase()}:${weekKey}`;
 
@@ -283,17 +293,14 @@ export default function Home() {
                 resetGameStateAndStart("tournament");
                 return;
               }
-              // keep pending so user can retry later without paying again
               console.error("Resume failed: create-entry still not completed.");
               return;
             }
 
-            // initiated but not paid or stale: clean up
             localStorage.removeItem(pendingKey);
           }
         } catch {}
 
-        // Addresses
         const USDC_ADDRESS =
           process.env.NEXT_PUBLIC_USDC_ADDRESS ||
           "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -304,7 +311,6 @@ export default function Home() {
           return;
         }
 
-        // Receipt poller (fallback path)
         const waitForTransaction = async (txHash: `0x${string}`) => {
           const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
           for (let i = 0; i < 60; i++) {
@@ -340,14 +346,14 @@ export default function Home() {
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        // Create purchaseId and mark initiated (so we can keep it if paid but entry fails)
+        // purchaseId + pending initiated
         const purchaseId = genPurchaseId();
-        localStorage.setItem(
-          pendingKey,
-          JSON.stringify({ createdAt: Date.now(), purchaseId, stage: "initiated" } satisfies PendingPurchase)
-        );
+        try {
+          const pending: PendingPurchase = { createdAt: Date.now(), purchaseId, stage: "initiated" };
+          localStorage.setItem(pendingKey, JSON.stringify(pending));
+        } catch {}
 
-        // --- Prefer EIP-5792 batch (single wallet prompt) ---
+        // --- Prefer batch ---
         let paid = false;
         const p = provider as any;
 
@@ -375,7 +381,6 @@ export default function Home() {
             params: [batchParams],
           })) as string;
 
-          // Wait status if supported: 100 pending, 200 confirmed
           let confirmed = false;
           for (let i = 0; i < 60; i++) {
             try {
@@ -392,8 +397,6 @@ export default function Home() {
                 throw new Error(`Batch failed: ${status.status}`);
               }
             } catch {
-              // If status method not supported, assume wallet accepted the call;
-              // server entry will still be protected by purchaseId/resume.
               confirmed = true;
               break;
             }
@@ -402,14 +405,14 @@ export default function Home() {
           }
 
           if (!confirmed) throw new Error("Batch confirmation timeout");
-          paid = true;
 
-          localStorage.setItem(
-            pendingKey,
-            JSON.stringify({ createdAt: Date.now(), purchaseId, stage: "paid", method: "batch" } satisfies PendingPurchase)
-          );
-        } catch (e) {
-          // --- Fallback: two transactions ---
+          paid = true;
+          try {
+            const pending: PendingPurchase = { createdAt: Date.now(), purchaseId, stage: "paid", method: "batch" };
+            localStorage.setItem(pendingKey, JSON.stringify(pending));
+          } catch {}
+        } catch {
+          // --- Fallback: approve + enter ---
           try {
             const approveTx = (await provider.request({
               method: "eth_sendTransaction",
@@ -436,12 +439,11 @@ export default function Home() {
             await waitForTransaction(entryTx);
 
             paid = true;
-            localStorage.setItem(
-              pendingKey,
-              JSON.stringify({ createdAt: Date.now(), purchaseId, stage: "paid", method: "fallback" } satisfies PendingPurchase)
-            );
+            try {
+              const pending: PendingPurchase = { createdAt: Date.now(), purchaseId, stage: "paid", method: "fallback" };
+              localStorage.setItem(pendingKey, JSON.stringify(pending));
+            } catch {}
           } catch (e2) {
-            // Not paid -> clean pending
             try {
               const raw = localStorage.getItem(pendingKey);
               if (raw) {
@@ -459,16 +461,13 @@ export default function Home() {
           return;
         }
 
-        // --- Create entry (idempotent by purchaseId; safe to retry) ---
         const entryOk = await tryCreateEntryWithRetry(currentAddress, purchaseId);
 
         if (!entryOk) {
-          // keep pending "paid" so next click resumes without charging again
           console.error("Payment succeeded but entry registration failed. Pending preserved for resume.");
           return;
         }
 
-        // success -> clear pending and start game
         localStorage.removeItem(pendingKey);
         resetGameStateAndStart("tournament");
       } catch (e) {
@@ -543,7 +542,12 @@ export default function Home() {
           {!gameOver ? (
             <>
               <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
-                <Scoreboard score={score} highestLevel={highestLevel} mergeCount={mergeCount} />
+                <Scoreboard
+                  score={score}
+                  highestLevel={highestLevel}
+                  mergeCount={mergeCount}
+                  platform={platform}
+                />
               </div>
               <div
                 style={{
@@ -579,6 +583,7 @@ export default function Home() {
               onRestart={handleRestart}
               onMenu={() => setScreen("menu")}
               onCast={handleCast}
+              platform={platform}
             />
           )}
         </div>
