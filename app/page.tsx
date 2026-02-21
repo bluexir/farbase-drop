@@ -22,6 +22,64 @@ type AttemptsResponse = {
   resetInSeconds: number | null;
 };
 
+type PendingPurchase = {
+  createdAt: number;
+  purchaseId: string;
+  stage: "initiated" | "paid";
+  // optional debug
+  method?: "batch" | "fallback";
+};
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// UTC Monday 00:00 week key (same idea as leaderboard)
+function getWeekKeyUTC() {
+  const now = new Date();
+  const utc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+  const day = utc.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  utc.setUTCDate(utc.getUTCDate() - diffToMonday);
+
+  const y = utc.getUTCFullYear();
+  const m = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(utc.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function genPurchaseId() {
+  try {
+    const c: any = globalThis.crypto;
+    if (c?.randomUUID) return c.randomUUID();
+  } catch {}
+  return `p_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+async function tryCreateEntryWithRetry(address: string, purchaseId: string) {
+  // create-entry: 200 success, 202 processing, others fail
+  for (let i = 0; i < 8; i++) {
+    const res = await sdk.quickAuth.fetch("/api/create-entry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "tournament", address, purchaseId }),
+    });
+
+    if (res.status === 202) {
+      await sleep(900);
+      continue;
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data?.success) return true;
+
+    // non-202 fail
+    return false;
+  }
+  return false;
+}
+
 export default function Home() {
   const [fid, setFid] = useState<number | null>(null);
   const [address, setAddress] = useState<string | null>(null);
@@ -46,19 +104,13 @@ export default function Home() {
     async function init() {
       try {
         const context = await sdk.context;
-
-        // ✅ Lazy auth / Base preview safe: FID yoksa null
         const maybeFid = context?.user?.fid;
         setFid(typeof maybeFid === "number" ? maybeFid : null);
 
         await sdk.actions.ready();
         try {
           await sdk.actions.addMiniApp();
-        } catch (_e) {}
-
-        // ✅ Açılışta QuickAuth ZORLAMA YOK.
-        // Admin / attempts gibi auth isteyen şeyleri UI (MainMenu) tarafında,
-        // FID varsa ve gerektiğinde yapacağız.
+        } catch {}
       } catch (e) {
         console.error("SDK init error:", e);
       } finally {
@@ -68,7 +120,6 @@ export default function Home() {
     init();
   }, []);
 
-  // Kumulatif skor: her merge'de olusan coin'in score'u eklenir
   const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
     const coinData = getCoinByLevel(toLevel);
     const increment = coinData?.score || 0;
@@ -81,7 +132,6 @@ export default function Home() {
     async (finalMerges: number, finalHighest: number, gameLog: GameLog) => {
       setGameOver(true);
 
-      // Kumulatif skor: game log'dan hesapla (server ile ayni formul)
       const calculated = calculateScoreFromLog(gameLog);
       const finalScore = calculated.score;
 
@@ -93,10 +143,8 @@ export default function Home() {
       setRemainingAttempts(null);
       setIsNewBest(false);
 
-      // Practice modunda wallet bagli olmayabilir
       const currentAddress = address || "0x0000000000000000000000000000000000000000";
 
-      // ✅ Lazy auth: FID yoksa score save denemeyiz (Base preview'da patlamasın)
       if (fid === null) {
         setScoreSaveError("Sign-in required to save score.");
         return;
@@ -121,12 +169,8 @@ export default function Home() {
 
         if (res.ok && data.success) {
           setScoreSaved(true);
-          if (typeof data.remaining === "number") {
-            setRemainingAttempts(data.remaining);
-          }
-          if (data.isNewBest) {
-            setIsNewBest(true);
-          }
+          if (typeof data.remaining === "number") setRemainingAttempts(data.remaining);
+          if (data.isNewBest) setIsNewBest(true);
         } else {
           setScoreSaveError(data.error || "Failed to save score");
         }
@@ -150,10 +194,7 @@ export default function Home() {
         coinData?.symbol || "?"
       }\n\nPlay now: ${miniappUrl}\n\nBy @bluexir`;
 
-      await sdk.actions.composeCast({
-        text,
-        embeds: [miniappUrl],
-      });
+      await sdk.actions.composeCast({ text, embeds: [miniappUrl] });
     } catch (e) {
       console.error("Cast error:", e);
     }
@@ -181,13 +222,13 @@ export default function Home() {
         return;
       }
 
-      // ✅ Lazy auth: Tournament için FID şart (QuickAuth + attempts)
+      // Tournament requires FID (QuickAuth)
       if (fid === null) {
         console.error("Tournament requires FID (sign-in).");
         return;
       }
 
-      // Tournament: attempt kontrolu
+      // Attempt check
       let hasAttempts = false;
       try {
         const res = await sdk.quickAuth.fetch("/api/remaining-attempts?mode=tournament");
@@ -198,11 +239,10 @@ export default function Home() {
         console.error("Failed to check tournament status:", e);
       }
 
-      // Farcaster wallet
       try {
         const provider = await sdk.wallet.getEthereumProvider();
         if (!provider) {
-          console.error("No Farcaster provider");
+          console.error("No provider");
           return;
         }
 
@@ -214,19 +254,46 @@ export default function Home() {
         }
         setAddress(currentAddress);
 
-        // Base chain
+        // Switch to Base
         await provider.request({
           method: "wallet_switchEthereumChain",
           params: [{ chainId: "0x2105" }],
         });
 
-        // Zaten hakki varsa direkt oyna
+        // If already has attempts, start immediately
         if (hasAttempts) {
           resetGameStateAndStart("tournament");
           return;
         }
 
-        // Yeni entry satin al (admin dahil herkes oder)
+        // --- Pending / Resume guard (prevents double charge) ---
+        const weekKey = getWeekKeyUTC();
+        const pendingKey = `farbase:pendingTournament:${currentAddress.toLowerCase()}:${weekKey}`;
+
+        try {
+          const raw = localStorage.getItem(pendingKey);
+          if (raw) {
+            const pending = JSON.parse(raw) as PendingPurchase;
+            const isFresh = pending?.createdAt && Date.now() - pending.createdAt < 24 * 60 * 60 * 1000;
+
+            if (isFresh && pending?.stage === "paid" && pending?.purchaseId) {
+              const ok = await tryCreateEntryWithRetry(currentAddress, pending.purchaseId);
+              if (ok) {
+                localStorage.removeItem(pendingKey);
+                resetGameStateAndStart("tournament");
+                return;
+              }
+              // keep pending so user can retry later without paying again
+              console.error("Resume failed: create-entry still not completed.");
+              return;
+            }
+
+            // initiated but not paid or stale: clean up
+            localStorage.removeItem(pendingKey);
+          }
+        } catch {}
+
+        // Addresses
         const USDC_ADDRESS =
           process.env.NEXT_PUBLIC_USDC_ADDRESS ||
           "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -237,12 +304,10 @@ export default function Home() {
           return;
         }
 
-        // ✅ receipt'i in-app provider yerine public Base RPC'den oku
+        // Receipt poller (fallback path)
         const waitForTransaction = async (txHash: `0x${string}`) => {
           const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
-          const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-          for (let attempts = 0; attempts < 60; attempts++) {
+          for (let i = 0; i < 60; i++) {
             const res = await fetch(rpc, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -253,16 +318,12 @@ export default function Home() {
                 params: [txHash],
               }),
             });
-
             const json = await res.json();
             const receipt = json?.result;
-
             if (receipt?.status === "0x1") return;
             if (receipt?.status === "0x0") throw new Error("Transaction failed");
-
             await sleep(1500);
           }
-
           throw new Error("Transaction confirmation timeout");
         };
 
@@ -279,101 +340,136 @@ export default function Home() {
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        // ✅ EIP-5792 batch dene, desteklenmezse fallback 2 tx
-        let batchWorked = false;
+        // Create purchaseId and mark initiated (so we can keep it if paid but entry fails)
+        const purchaseId = genPurchaseId();
+        localStorage.setItem(
+          pendingKey,
+          JSON.stringify({ createdAt: Date.now(), purchaseId, stage: "initiated" } satisfies PendingPurchase)
+        );
+
+        // --- Prefer EIP-5792 batch (single wallet prompt) ---
+        let paid = false;
+        const p = provider as any;
+
         try {
           const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
-          const batchParams: Record<string, unknown> = {
-            version: "1.0",
-            from: currentAddress,
+
+          const batchParams: any = {
+            version: "2.0.0",
+            from: currentAddress as `0x${string}`,
             chainId: "0x2105",
             calls: [
-              { to: USDC_ADDRESS, data: approveData, value: "0x0" },
-              { to: CONTRACT_ADDRESS, data: enterData, value: "0x0" },
+              { to: USDC_ADDRESS as `0x${string}`, data: approveData as `0x${string}`, value: "0x0" },
+              { to: CONTRACT_ADDRESS as `0x${string}`, data: enterData as `0x${string}`, value: "0x0" },
             ],
           };
+
           if (paymasterUrl) {
             batchParams.capabilities = {
               paymasterService: { url: paymasterUrl },
             };
           }
 
-          const batchId = await provider.request({
+          const batchId = (await p.request({
             method: "wallet_sendCalls",
             params: [batchParams],
-          });
+          })) as string;
 
-          // Batch confirmation bekle
+          // Wait status if supported: 100 pending, 200 confirmed
+          let confirmed = false;
           for (let i = 0; i < 60; i++) {
             try {
-              const status = (await provider.request({
+              const status = (await p.request({
                 method: "wallet_getCallsStatus",
                 params: [batchId],
-              })) as { status?: string };
-              if (status?.status === "CONFIRMED") break;
-              if (status?.status === "FAILED") throw new Error("Batch transaction failed");
-            } catch (_statusErr) {
-              // wallet_getCallsStatus desteklenmeyebilir
-            }
-            await new Promise((r) => setTimeout(r, 1500));
-          }
-          batchWorked = true;
-        } catch (_batchErr) {
-          // wallet_sendCalls desteklenmiyor — fallback 2 ayri tx
-          batchWorked = false;
-        }
+              })) as any;
 
-        if (!batchWorked) {
-          // Fallback: klasik 2 ayrı imza
-        const approveTx = (await provider.request({
+              if (status?.status === 200) {
+                confirmed = true;
+                break;
+              }
+              if (status?.status && status.status !== 100) {
+                throw new Error(`Batch failed: ${status.status}`);
+              }
+            } catch {
+              // If status method not supported, assume wallet accepted the call;
+              // server entry will still be protected by purchaseId/resume.
+              confirmed = true;
+              break;
+            }
+
+            await sleep(1500);
+          }
+
+          if (!confirmed) throw new Error("Batch confirmation timeout");
+          paid = true;
+
+          localStorage.setItem(
+            pendingKey,
+            JSON.stringify({ createdAt: Date.now(), purchaseId, stage: "paid", method: "batch" } satisfies PendingPurchase)
+          );
+        } catch (e) {
+          // --- Fallback: two transactions ---
+          try {
+            const approveTx = (await provider.request({
               method: "eth_sendTransaction",
-              params: [{ from: currentAddress as `0x${string}`, to: USDC_ADDRESS as `0x${string}`, data: approveData as `0x${string}` }],
+              params: [
+                {
+                  from: currentAddress as `0x${string}`,
+                  to: USDC_ADDRESS as `0x${string}`,
+                  data: approveData as `0x${string}`,
+                },
+              ],
             })) as `0x${string}`;
             await waitForTransaction(approveTx);
 
             const entryTx = (await provider.request({
               method: "eth_sendTransaction",
-              params: [{ from: currentAddress as `0x${string}`, to: CONTRACT_ADDRESS as `0x${string}`, data: enterData as `0x${string}` }],
+              params: [
+                {
+                  from: currentAddress as `0x${string}`,
+                  to: CONTRACT_ADDRESS as `0x${string}`,
+                  data: enterData as `0x${string}`,
+                },
+              ],
             })) as `0x${string}`;
             await waitForTransaction(entryTx);
 
-          const entryTxHash = (await provider.request({
-            method: "eth_sendTransaction",
-            params: [
-              {
-                from: currentAddress as `0x${string}`,
-                to: CONTRACT_ADDRESS as `0x${string}`,
-                data: enterData as `0x${string}`,
-              },
-            ],
-          })) as `0x${string}`;
-          await waitForTransaction(entryTxHash);
+            paid = true;
+            localStorage.setItem(
+              pendingKey,
+              JSON.stringify({ createdAt: Date.now(), purchaseId, stage: "paid", method: "fallback" } satisfies PendingPurchase)
+            );
+          } catch (e2) {
+            // Not paid -> clean pending
+            try {
+              const raw = localStorage.getItem(pendingKey);
+              if (raw) {
+                const pending = JSON.parse(raw) as PendingPurchase;
+                if (pending?.stage !== "paid") localStorage.removeItem(pendingKey);
+              }
+            } catch {}
+            console.error("Tournament payment failed:", e2);
+            return;
+          }
         }
 
-        // ✅ Server entry — 3 retry
-        let entryOk = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const entryRes = await sdk.quickAuth.fetch("/api/create-entry", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mode: "tournament", address: currentAddress }),
-            });
-            const entryData = await entryRes.json();
-            if (entryRes.ok && entryData.success) {
-              entryOk = true;
-              break;
-            }
-          } catch (_retryErr) {
-            // retry
-          }
-          if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        if (!paid) {
+          console.error("Payment not completed.");
+          return;
         }
+
+        // --- Create entry (idempotent by purchaseId; safe to retry) ---
+        const entryOk = await tryCreateEntryWithRetry(currentAddress, purchaseId);
 
         if (!entryOk) {
-          console.error("Failed to register entry after payment.");
+          // keep pending "paid" so next click resumes without charging again
+          console.error("Payment succeeded but entry registration failed. Pending preserved for resume.");
+          return;
         }
 
+        // success -> clear pending and start game
+        localStorage.removeItem(pendingKey);
         resetGameStateAndStart("tournament");
       } catch (e) {
         console.error("Tournament entry failed:", e);
@@ -395,7 +491,6 @@ export default function Home() {
     setGameKey((k) => k + 1);
   }, []);
 
-  // ✅ Artık "fid === null" diye sonsuz loading yok.
   if (loading) {
     return (
       <div
@@ -421,15 +516,10 @@ export default function Home() {
           onPractice={() => startGame("practice")}
           onTournament={() => startGame("tournament")}
           onLeaderboard={() => {
-            // Leaderboard auth ister; FID yoksa gitme
             if (fid === null) return;
             setScreen("leaderboard");
           }}
-          onAdmin={
-            isAdmin && fid !== null
-              ? () => setScreen("admin")
-              : undefined
-          }
+          onAdmin={isAdmin && fid !== null ? () => setScreen("admin") : undefined}
         />
       )}
 
