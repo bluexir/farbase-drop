@@ -35,51 +35,131 @@ export default function Home() {
   const [mergeCount, setMergeCount] = useState(0);
   const [highestLevel, setHighestLevel] = useState(1);
 
+  const [gameKey, setGameKey] = useState(0);
+  const [currentMode, setCurrentMode] = useState<"practice" | "tournament">("practice");
   const [scoreSaved, setScoreSaved] = useState(false);
   const [scoreSaveError, setScoreSaveError] = useState<string | null>(null);
-
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
-
   const [isNewBest, setIsNewBest] = useState(false);
 
-  const [gameKey, setGameKey] = useState(0);
-
-  const [currentMode, setCurrentMode] = useState<"practice" | "tournament">("practice");
-
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
+    async function init() {
       try {
         const context = await sdk.context;
-        if (cancelled) return;
 
-        const fidFromContext = context?.user?.fid ?? null;
-        setFid(fidFromContext);
+        // ✅ Lazy auth / Base preview safe: FID yoksa null
+        const maybeFid = context?.user?.fid;
+        setFid(typeof maybeFid === "number" ? maybeFid : null);
 
-        const provider = await sdk.wallet.getEthereumProvider();
-        if (provider) {
-          try {
-            const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
-            const currentAddress = accounts?.[0] ?? null;
-            if (currentAddress) setAddress(currentAddress);
-          } catch {
-            // ignore
-          }
-        }
+        await sdk.actions.ready();
+        try {
+          await sdk.actions.addMiniApp();
+        } catch (_e) {}
+
+        // ✅ Açılışta QuickAuth ZORLAMA YOK.
+        // Admin / attempts gibi auth isteyen şeyleri UI (MainMenu) tarafında,
+        // FID varsa ve gerektiğinde yapacağız.
       } catch (e) {
-        console.error("Failed to load sdk context:", e);
+        console.error("SDK init error:", e);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    }
+    init();
   }, []);
 
-  const resetGameStateAndStart = useCallback((targetMode: "practice" | "tournament") => {
+  // Kumulatif skor: her merge'de olusan coin'in score'u eklenir
+  const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
+    const coinData = getCoinByLevel(toLevel);
+    const increment = coinData?.score || 0;
+    setScore((prev) => prev + increment);
+    setMergeCount((prev) => prev + 1);
+    setHighestLevel((prev) => Math.max(prev, toLevel));
+  }, []);
+
+  const handleGameOver = useCallback(
+    async (finalMerges: number, finalHighest: number, gameLog: GameLog) => {
+      setGameOver(true);
+
+      // Kumulatif skor: game log'dan hesapla (server ile ayni formul)
+      const calculated = calculateScoreFromLog(gameLog);
+      const finalScore = calculated.score;
+
+      setScore(finalScore);
+      setMergeCount(finalMerges);
+      setHighestLevel(finalHighest);
+      setScoreSaved(false);
+      setScoreSaveError(null);
+      setRemainingAttempts(null);
+      setIsNewBest(false);
+
+      // Practice modunda wallet bagli olmayabilir
+      const currentAddress = address || "0x0000000000000000000000000000000000000000";
+
+      // ✅ Lazy auth: FID yoksa score save denemeyiz (Base preview'da patlamasın)
+      if (fid === null) {
+        setScoreSaveError("Sign-in required to save score.");
+        return;
+      }
+
+      try {
+        const res = await sdk.quickAuth.fetch("/api/save-score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address: currentAddress,
+            score: finalScore,
+            mergeCount: finalMerges,
+            highestLevel: finalHighest,
+            mode: currentMode,
+            gameLog,
+            sessionId: `${fid}-${Date.now()}`,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          setScoreSaved(true);
+          if (typeof data.remaining === "number") {
+            setRemainingAttempts(data.remaining);
+          }
+          if (data.isNewBest) {
+            setIsNewBest(true);
+          }
+        } else {
+          setScoreSaveError(data.error || "Failed to save score");
+        }
+      } catch (e) {
+        console.error("Save score error:", e);
+        setScoreSaveError("Network error — score not saved");
+      }
+    },
+    [fid, address, currentMode]
+  );
+
+  const handleCast = useCallback(async () => {
+    try {
+      const coinData = getCoinByLevel(highestLevel);
+      const miniappUrl =
+        process.env.NEXT_PUBLIC_MINIAPP_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "https://farbase-drop.vercel.app";
+
+      const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
+        coinData?.symbol || "?"
+      }\n\nPlay now: ${miniappUrl}\n\nBy @bluexir`;
+
+      await sdk.actions.composeCast({
+        text,
+        embeds: [miniappUrl],
+      });
+    } catch (e) {
+      console.error("Cast error:", e);
+    }
+  }, [score, highestLevel]);
+
+  const resetGameStateAndStart = useCallback((targetScreen: Screen) => {
     setGameOver(false);
     setScore(0);
     setMergeCount(0);
@@ -89,7 +169,7 @@ export default function Home() {
     setRemainingAttempts(null);
     setIsNewBest(false);
     setGameKey((k) => k + 1);
-    setScreen(targetMode);
+    setScreen(targetScreen);
   }, []);
 
   const startGame = useCallback(
@@ -98,6 +178,12 @@ export default function Home() {
 
       if (mode === "practice") {
         resetGameStateAndStart("practice");
+        return;
+      }
+
+      // ✅ Lazy auth: Tournament için FID şart (QuickAuth + attempts)
+      if (fid === null) {
+        console.error("Tournament requires FID (sign-in).");
         return;
       }
 
@@ -112,11 +198,11 @@ export default function Home() {
         console.error("Failed to check tournament status:", e);
       }
 
-      // Farcaster wallet (Farcaster clients + Base App)
+      // Farcaster wallet
       try {
         const provider = await sdk.wallet.getEthereumProvider();
         if (!provider) {
-          console.error("No provider");
+          console.error("No Farcaster provider");
           return;
         }
 
@@ -140,6 +226,7 @@ export default function Home() {
           return;
         }
 
+        // Yeni entry satin al (admin dahil herkes oder)
         const USDC_ADDRESS =
           process.env.NEXT_PUBLIC_USDC_ADDRESS ||
           "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -150,7 +237,7 @@ export default function Home() {
           return;
         }
 
-        // Receipt'i in-app provider yerine public Base RPC'den oku (sponsor/provider farkları için)
+        // ✅ receipt'i in-app provider yerine public Base RPC'den oku
         const waitForTransaction = async (txHash: `0x${string}`) => {
           const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
           const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -181,91 +268,7 @@ export default function Home() {
 
         const { ethers } = await import("ethers");
 
-        // ---- Purchase metadata (idempotency + resume) ----
-        const getISOWeekKeyUTC = () => {
-          const d = new Date();
-          const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-          const dayNr = (target.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-          target.setUTCDate(target.getUTCDate() - dayNr + 3); // Thu
-          const firstThu = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
-          const firstDayNr = (firstThu.getUTCDay() + 6) % 7;
-          firstThu.setUTCDate(firstThu.getUTCDate() - firstDayNr + 3);
-          const weekNo = 1 + Math.round((target.getTime() - firstThu.getTime()) / 604800000);
-          const year = target.getUTCFullYear();
-          return `${year}-W${String(weekNo).padStart(2, "0")}`;
-        };
-
-        const weekKey = getISOWeekKeyUTC();
-        const pendingKey = `farbase:pendingTournament:${currentAddress.toLowerCase()}:${weekKey}`;
-
-        const genPurchaseId = () => {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const c: any = globalThis.crypto;
-            if (c?.randomUUID) return c.randomUUID();
-          } catch {}
-          return `p_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        };
-
-        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-        const tryCompleteServerEntry = async (purchaseId: string) => {
-          // create-entry server-side idempotent by purchaseId
-          for (let i = 0; i < 10; i++) {
-            const res = await sdk.quickAuth.fetch("/api/create-entry", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                mode: "tournament",
-                address: currentAddress,
-                purchaseId,
-              }),
-            });
-
-            if (res.status === 202) {
-              await sleep(1000);
-              continue;
-            }
-
-            if (!res.ok) {
-              const msg = await res.text().catch(() => "");
-              throw new Error(`create-entry failed: ${res.status} ${msg}`);
-            }
-            return;
-          }
-          throw new Error("create-entry still processing");
-        };
-
-        // If we previously PAID but entry creation failed (network/app close),
-        // resume without charging again.
-        try {
-          const raw = localStorage.getItem(pendingKey);
-          if (raw) {
-            const pending = JSON.parse(raw) as {
-              createdAt: number;
-              purchaseId: string;
-              stage?: "initiated" | "paid";
-            };
-            if (
-              pending?.purchaseId &&
-              pending?.createdAt &&
-              pending?.stage === "paid" &&
-              Date.now() - pending.createdAt < 24 * 60 * 60 * 1000
-            ) {
-              await tryCompleteServerEntry(pending.purchaseId);
-              localStorage.removeItem(pendingKey);
-              resetGameStateAndStart("tournament");
-              return;
-            } else if (pending?.stage !== "paid") {
-              // initiated-but-not-paid: temizle (cancelled / failed)
-              localStorage.removeItem(pendingKey);
-            }
-          }
-        } catch {
-          // ignore
-        }
-
-        // Prepare calldata
+        // 1) Approve USDC
         const usdcInterface = new ethers.Interface([
           "function approve(address spender, uint256 amount)",
         ]);
@@ -274,155 +277,48 @@ export default function Home() {
           1000000,
         ]);
 
+        const approveTxHash = (await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: currentAddress as `0x${string}`,
+              to: USDC_ADDRESS as `0x${string}`,
+              data: approveData as `0x${string}`,
+            },
+          ],
+        })) as `0x${string}`;
+        await waitForTransaction(approveTxHash);
+
+        // 2) Enter tournament
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        // New purchaseId for this attempt (stable across retries via localStorage)
-        const purchaseId = genPurchaseId();
-        const pendingCreatedAt = Date.now();
-        localStorage.setItem(
-          pendingKey,
-          JSON.stringify({ createdAt: pendingCreatedAt, purchaseId, stage: "initiated" })
-        );
+        const entryTxHash = (await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: currentAddress as `0x${string}`,
+              to: CONTRACT_ADDRESS as `0x${string}`,
+              data: enterData as `0x${string}`,
+            },
+          ],
+        })) as `0x${string}`;
+        await waitForTransaction(entryTxHash);
 
-        // ---- Prefer EIP-5792 batching (single prompt) when available ----
-        let usedBatch = false;
-
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const p: any = provider;
-
-          const caps = await p.request({
-            method: "wallet_getCapabilities",
-            params: [currentAddress],
-          });
-
-          const baseCaps = caps?.["0x2105"];
-          const atomic = baseCaps?.atomic?.supported;
-          const canBatch = atomic === "supported" || atomic === "ready";
-
-          if (canBatch) {
-            const sendRes = await p.request({
-              method: "wallet_sendCalls",
-              params: [
-                {
-                  version: "2.0.0",
-                  from: currentAddress,
-                  chainId: "0x2105",
-                  calls: [
-                    { to: USDC_ADDRESS, data: approveData, value: "0x0" },
-                    { to: CONTRACT_ADDRESS, data: enterData, value: "0x0" },
-                  ],
-                },
-              ],
-            });
-
-            const callsId =
-              typeof sendRes === "string"
-                ? sendRes
-                : sendRes?.batchId || sendRes?.callsId || sendRes?.id;
-
-            if (!callsId) throw new Error("wallet_sendCalls did not return callsId");
-
-            // Wait for batch confirmation
-            let confirmed = false;
-            for (let i = 0; i < 90; i++) {
-              const status = await p.request({
-                method: "wallet_getCallsStatus",
-                params: [callsId],
-              });
-
-              if (status?.status === 200) {
-                confirmed = true;
-                break;
-              }
-              if (status?.status && status.status !== 100) {
-                throw new Error(`Batch failed: ${status.status}`);
-              }
-              await sleep(1500);
-            }
-
-            if (!confirmed) throw new Error("Batch confirmation timeout");
-
-            // Mark paid (so we can resume create-entry without re-charging)
-            localStorage.setItem(
-              pendingKey,
-              JSON.stringify({ createdAt: pendingCreatedAt, purchaseId, stage: "paid" })
-            );
-
-            usedBatch = true;
-          }
-        } catch {
-          usedBatch = false;
-        }
-
-        // ---- Fallback: two transactions ----
-        if (!usedBatch) {
-          // 1) Approve USDC
-          const approveTxHash = (await provider.request({
-            method: "eth_sendTransaction",
-            params: [
-              {
-                from: currentAddress as `0x${string}`,
-                to: USDC_ADDRESS as `0x${string}`,
-                data: approveData as `0x${string}`,
-              },
-            ],
-          })) as `0x${string}`;
-          await waitForTransaction(approveTxHash);
-
-          // 2) Enter tournament
-          const entryTxHash = (await provider.request({
-            method: "eth_sendTransaction",
-            params: [
-              {
-                from: currentAddress as `0x${string}`,
-                to: CONTRACT_ADDRESS as `0x${string}`,
-                data: enterData as `0x${string}`,
-              },
-            ],
-          })) as `0x${string}`;
-          await waitForTransaction(entryTxHash);
-
-          // Mark paid
-          localStorage.setItem(
-            pendingKey,
-            JSON.stringify({ createdAt: pendingCreatedAt, purchaseId, stage: "paid" })
-          );
-        }
-
-        // 3) Server entry (idempotent, safe to retry)
-        await tryCompleteServerEntry(purchaseId);
-        localStorage.removeItem(pendingKey);
+        // 3) Server entry
+        await sdk.quickAuth.fetch("/api/create-entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "tournament", address: currentAddress }),
+        });
 
         resetGameStateAndStart("tournament");
       } catch (e) {
-        // initiated-but-not-paid pending'i temizle (paid ise kalsın ki resume olsun)
-        try {
-          if (typeof window !== "undefined" && address) {
-            const d = new Date();
-            const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-            const dayNr = (target.getUTCDay() + 6) % 7;
-            target.setUTCDate(target.getUTCDate() - dayNr + 3);
-            const firstThu = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
-            const firstDayNr = (firstThu.getUTCDay() + 6) % 7;
-            firstThu.setUTCDate(firstThu.getUTCDate() - firstDayNr + 3);
-            const weekNo = 1 + Math.round((target.getTime() - firstThu.getTime()) / 604800000);
-            const year = target.getUTCFullYear();
-            const weekKey = `${year}-W${String(weekNo).padStart(2, "0")}`;
-            const k = `farbase:pendingTournament:${address.toLowerCase()}:${weekKey}`;
-            const raw = localStorage.getItem(k);
-            if (raw) {
-              const pending = JSON.parse(raw) as { stage?: string };
-              if (pending?.stage !== "paid") localStorage.removeItem(k);
-            }
-          }
-        } catch {}
         console.error("Tournament entry failed:", e);
         return;
       }
     },
-    [resetGameStateAndStart, address]
+    [resetGameStateAndStart, address, fid]
   );
 
   const handleRestart = useCallback(() => {
@@ -437,7 +333,8 @@ export default function Home() {
     setGameKey((k) => k + 1);
   }, []);
 
-  if (loading || fid === null) {
+  // ✅ Artık "fid === null" diye sonsuz loading yok.
+  if (loading) {
     return (
       <div
         style={{
@@ -461,12 +358,22 @@ export default function Home() {
           fid={fid}
           onPractice={() => startGame("practice")}
           onTournament={() => startGame("tournament")}
-          onLeaderboard={() => setScreen("leaderboard")}
-          onAdmin={isAdmin ? () => setScreen("admin") : undefined}
+          onLeaderboard={() => {
+            // Leaderboard auth ister; FID yoksa gitme
+            if (fid === null) return;
+            setScreen("leaderboard");
+          }}
+          onAdmin={
+            isAdmin && fid !== null
+              ? () => setScreen("admin")
+              : undefined
+          }
         />
       )}
 
-      {screen === "leaderboard" && <Leaderboard fid={fid} onBack={() => setScreen("menu")} />}
+      {screen === "leaderboard" && fid !== null && (
+        <Leaderboard fid={fid} onBack={() => setScreen("menu")} />
+      )}
 
       {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
 
@@ -500,51 +407,10 @@ export default function Home() {
                   key={gameKey}
                   mode={screen}
                   gameStarted={true}
-                  fid={fid}
-                  sessionId={`${fid}-${gameKey}`}
-                  onMerge={(fromLevel, toLevel) => {
-                    const toCoin = getCoinByLevel(toLevel);
-                    setScore((s) => s + (toCoin?.score || 0));
-                    setMergeCount((m) => m + 1);
-                    setHighestLevel((h) => Math.max(h, toLevel));
-                  }}
-                  onGameOver={async (finalMergeCount, finalHighestLevel, log: GameLog) => {
-                    setGameOver(true);
-                    const result = calculateScoreFromLog(log);
-                    setScore(result.score);
-                    setMergeCount(finalMergeCount);
-                    setHighestLevel(finalHighestLevel);
-
-                    setScoreSaved(false);
-                    setScoreSaveError(null);
-                    setIsNewBest(false);
-
-                    try {
-                      const res = await sdk.quickAuth.fetch("/api/save-score", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          mode: screen,
-                          score: result.score,
-                          mergeCount: finalMergeCount,
-                          highestLevel: finalHighestLevel,
-                          log,
-                          address,
-                        }),
-                      });
-
-                      const json = await res.json();
-                      setScoreSaved(true);
-                      setIsNewBest(!!json?.isNewBest);
-
-                      if (typeof json?.remaining === "number") {
-                        setRemainingAttempts(json.remaining);
-                      }
-                    } catch (e: any) {
-                      console.error("Failed to save score:", e);
-                      setScoreSaveError(e?.message || "Failed to save score");
-                    }
-                  }}
+                  fid={fid ?? 0}
+                  sessionId={`${fid ?? 0}-${gameKey}`}
+                  onMerge={handleMerge}
+                  onGameOver={handleGameOver}
                 />
               </div>
             </>
@@ -560,21 +426,7 @@ export default function Home() {
               isNewBest={isNewBest}
               onRestart={handleRestart}
               onMenu={() => setScreen("menu")}
-              onCast={async () => {
-                try {
-                  const miniappUrl =
-                    process.env.NEXT_PUBLIC_MINIAPP_URL ||
-                    process.env.NEXT_PUBLIC_APP_URL ||
-                    "https://farbase-drop.vercel.app";
-
-                  await sdk.actions.composeCast({
-                    text: `I scored ${score} on FarBase Drop. Highest: ${getCoinByLevel(highestLevel)?.symbol || "?"}\n\nPlay: ${miniappUrl}`,
-                    embeds: [miniappUrl],
-                  });
-                } catch (e) {
-                  console.error("Cast failed:", e);
-                }
-              }}
+              onCast={handleCast}
             />
           )}
         </div>
