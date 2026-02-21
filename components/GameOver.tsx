@@ -1,6 +1,6 @@
 "use client";
 
-import { getCoinByLevel } from "@/lib/coins";
+import { getCoinByLevel, Platform } from "@/lib/coins";
 
 interface GameOverProps {
   score: number;
@@ -15,6 +15,9 @@ interface GameOverProps {
   onRestart: () => void;
   onMenu?: () => void;
   onCast: () => void | Promise<void>;
+
+  // ✅ New: platform-aware coin labels/icons
+  platform?: Platform;
 }
 
 export default function GameOver({
@@ -30,8 +33,9 @@ export default function GameOver({
   onRestart,
   onMenu,
   onCast,
+  platform = "farcaster",
 }: GameOverProps) {
-  const highestCoin = getCoinByLevel(highestLevel);
+  const highestCoin = getCoinByLevel(highestLevel, platform);
 
   const mergesValue =
     typeof merges === "number"
@@ -40,8 +44,7 @@ export default function GameOver({
       ? mergeCount
       : 0;
 
-  const canPlayAgain =
-    remaining === null || remaining === undefined || remaining > 0;
+  const canPlayAgain = remaining === null || remaining === undefined || remaining > 0;
 
   return (
     <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-10 rounded-xl px-6">
