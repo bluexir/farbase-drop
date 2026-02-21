@@ -198,11 +198,11 @@ export default function Home() {
         console.error("Failed to check tournament status:", e);
       }
 
-      // Farcaster wallet
+      // Wallet
       try {
         const provider = await sdk.wallet.getEthereumProvider();
         if (!provider) {
-          console.error("No Farcaster provider");
+          console.error("No wallet provider");
           return;
         }
 
@@ -242,7 +242,7 @@ export default function Home() {
           const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
           const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-          for (let attempts = 0; attempts < 60; attempts++) {
+          for (let i = 0; i < 60; i++) {
             const res = await fetch(rpc, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -268,7 +268,6 @@ export default function Home() {
 
         const { ethers } = await import("ethers");
 
-        // 1) Approve USDC
         const usdcInterface = new ethers.Interface([
           "function approve(address spender, uint256 amount)",
         ]);
@@ -277,41 +276,99 @@ export default function Home() {
           1000000,
         ]);
 
-        const approveTxHash = (await provider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: currentAddress as `0x${string}`,
-              to: USDC_ADDRESS as `0x${string}`,
-              data: approveData as `0x${string}`,
-            },
-          ],
-        })) as `0x${string}`;
-        await waitForTransaction(approveTxHash);
-
-        // 2) Enter tournament
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        const entryTxHash = (await provider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: currentAddress as `0x${string}`,
-              to: CONTRACT_ADDRESS as `0x${string}`,
-              data: enterData as `0x${string}`,
-            },
-          ],
-        })) as `0x${string}`;
-        await waitForTransaction(entryTxHash);
+        // ✅ EIP-5792 batch: approve + enter tek imza, paymaster destegi
+        try {
+          const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
 
-        // 3) Server entry
-        await sdk.quickAuth.fetch("/api/create-entry", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "tournament", address: currentAddress }),
-        });
+          const batchParams: any = {
+            version: "1.0",
+            from: currentAddress,
+            chainId: "0x2105",
+            calls: [
+              { to: USDC_ADDRESS, data: approveData, value: "0x0" },
+              { to: CONTRACT_ADDRESS, data: enterData, value: "0x0" },
+            ],
+          };
 
+          // Paymaster varsa ekle (Base App gas sponsor)
+          if (paymasterUrl) {
+            batchParams.capabilities = {
+              paymasterService: { url: paymasterUrl },
+            };
+          }
+
+          const batchId = await provider.request({
+            method: "wallet_sendCalls",
+            params: [batchParams],
+          });
+
+          // Batch confirmation bekle
+          for (let i = 0; i < 60; i++) {
+            try {
+              const status = (await provider.request({
+                method: "wallet_getCallsStatus",
+                params: [batchId],
+              })) as any;
+              if (status?.status === "CONFIRMED") break;
+              if (status?.status === "FAILED") throw new Error("Batch transaction failed");
+            } catch (_e) {
+              // wallet_getCallsStatus desteklenmeyebilir, devam et
+            }
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        } catch (batchErr: any) {
+          // Fallback: wallet batch desteklemiyorsa 2 ayri tx
+          if (
+            batchErr?.code === 4200 ||
+            batchErr?.code === -32601 ||
+            batchErr?.message?.includes("not supported") ||
+            batchErr?.message?.includes("not found") ||
+            batchErr?.message?.includes("Method")
+          ) {
+            const approveTx = (await provider.request({
+              method: "eth_sendTransaction",
+              params: [{ from: currentAddress, to: USDC_ADDRESS, data: approveData }],
+            })) as `0x${string}`;
+            await waitForTransaction(approveTx);
+
+            const entryTx = (await provider.request({
+              method: "eth_sendTransaction",
+              params: [{ from: currentAddress, to: CONTRACT_ADDRESS, data: enterData }],
+            })) as `0x${string}`;
+            await waitForTransaction(entryTx);
+          } else {
+            throw batchErr;
+          }
+        }
+
+        // ✅ Server entry — retry 3 kez
+        let entrySuccess = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const entryRes = await sdk.quickAuth.fetch("/api/create-entry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode: "tournament", address: currentAddress }),
+            });
+            const entryData = await entryRes.json();
+            if (entryRes.ok && entryData.success) {
+              entrySuccess = true;
+              break;
+            }
+          } catch (_e) {
+            // Retry
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        if (!entrySuccess) {
+          console.error("Failed to register entry after payment. Contact support.");
+        }
+
+        // ✅ Odeme ve entry basarili — otomatik oyun baslat
         resetGameStateAndStart("tournament");
       } catch (e) {
         console.error("Tournament entry failed:", e);
