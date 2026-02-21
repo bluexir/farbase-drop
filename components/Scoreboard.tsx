@@ -1,6 +1,6 @@
 "use client";
 
-import { getCoinByLevel } from "@/lib/coins";
+import { getCoinByLevel, Platform } from "@/lib/coins";
 
 interface ScoreboardProps {
   score: number;
@@ -10,6 +10,9 @@ interface ScoreboardProps {
   // Optional (for tournament UX)
   mode?: "practice" | "tournament";
   remainingAttempts?: number | null;
+
+  // ✅ New: platform-aware coin labels/icons
+  platform?: Platform;
 }
 
 export default function Scoreboard({
@@ -18,8 +21,9 @@ export default function Scoreboard({
   highestLevel,
   mode,
   remainingAttempts,
+  platform = "farcaster",
 }: ScoreboardProps) {
-  const highestCoin = getCoinByLevel(highestLevel);
+  const highestCoin = getCoinByLevel(highestLevel, platform);
 
   const modeLabel =
     mode === "tournament" ? "Tournament" : mode === "practice" ? "Practice" : null;
