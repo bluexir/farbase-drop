@@ -198,11 +198,11 @@ export default function Home() {
         console.error("Failed to check tournament status:", e);
       }
 
-      // Wallet
+      // Farcaster wallet
       try {
         const provider = await sdk.wallet.getEthereumProvider();
         if (!provider) {
-          console.error("No wallet provider");
+          console.error("No Farcaster provider");
           return;
         }
 
@@ -242,7 +242,7 @@ export default function Home() {
           const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
           const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-          for (let i = 0; i < 60; i++) {
+          for (let attempts = 0; attempts < 60; attempts++) {
             const res = await fetch(rpc, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -279,11 +279,11 @@ export default function Home() {
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        // ✅ EIP-5792 batch: approve + enter tek imza, paymaster destegi
+        // ✅ EIP-5792 batch dene, desteklenmezse fallback 2 tx
+        let batchWorked = false;
         try {
           const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
-
-          const batchParams: any = {
+          const batchParams: Record<string, unknown> = {
             version: "1.0",
             from: currentAddress,
             chainId: "0x2105",
@@ -292,8 +292,6 @@ export default function Home() {
               { to: CONTRACT_ADDRESS, data: enterData, value: "0x0" },
             ],
           };
-
-          // Paymaster varsa ekle (Base App gas sponsor)
           if (paymasterUrl) {
             batchParams.capabilities = {
               paymasterService: { url: paymasterUrl },
@@ -311,41 +309,49 @@ export default function Home() {
               const status = (await provider.request({
                 method: "wallet_getCallsStatus",
                 params: [batchId],
-              })) as any;
+              })) as { status?: string };
               if (status?.status === "CONFIRMED") break;
               if (status?.status === "FAILED") throw new Error("Batch transaction failed");
-            } catch (_e) {
-              // wallet_getCallsStatus desteklenmeyebilir, devam et
+            } catch (_statusErr) {
+              // wallet_getCallsStatus desteklenmeyebilir
             }
             await new Promise((r) => setTimeout(r, 1500));
           }
-        } catch (batchErr: any) {
-          // Fallback: wallet batch desteklemiyorsa 2 ayri tx
-          if (
-            batchErr?.code === 4200 ||
-            batchErr?.code === -32601 ||
-            batchErr?.message?.includes("not supported") ||
-            batchErr?.message?.includes("not found") ||
-            batchErr?.message?.includes("Method")
-          ) {
-         const approveTx = (await provider.request({
-              method: "eth_sendTransaction",
-              params: [{ from: currentAddress as `0x${string}`, to: USDC_ADDRESS as `0x${string}`, data: approveData as `0x${string}` }],
-            })) as `0x${string}`;
-            await waitForTransaction(approveTx);
-
-            const entryTx = (await provider.request({
-              method: "eth_sendTransaction",
-              params: [{ from: currentAddress as `0x${string}`, to: CONTRACT_ADDRESS as `0x${string}`, data: enterData as `0x${string}` }],
-            })) as `0x${string}`;
-            await waitForTransaction(entryTx);
-          } else {
-            throw batchErr;
-          }
+          batchWorked = true;
+        } catch (_batchErr) {
+          // wallet_sendCalls desteklenmiyor — fallback 2 ayri tx
+          batchWorked = false;
         }
 
-        // ✅ Server entry — retry 3 kez
-        let entrySuccess = false;
+        if (!batchWorked) {
+          // Fallback: klasik 2 ayrı imza
+          const approveTxHash = (await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: currentAddress as `0x${string}`,
+                to: USDC_ADDRESS as `0x${string}`,
+                data: approveData as `0x${string}`,
+              },
+            ],
+          })) as `0x${string}`;
+          await waitForTransaction(approveTxHash);
+
+          const entryTxHash = (await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: currentAddress as `0x${string}`,
+                to: CONTRACT_ADDRESS as `0x${string}`,
+                data: enterData as `0x${string}`,
+              },
+            ],
+          })) as `0x${string}`;
+          await waitForTransaction(entryTxHash);
+        }
+
+        // ✅ Server entry — 3 retry
+        let entryOk = false;
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const entryRes = await sdk.quickAuth.fetch("/api/create-entry", {
@@ -355,20 +361,19 @@ export default function Home() {
             });
             const entryData = await entryRes.json();
             if (entryRes.ok && entryData.success) {
-              entrySuccess = true;
+              entryOk = true;
               break;
             }
-          } catch (_e) {
-            // Retry
+          } catch (_retryErr) {
+            // retry
           }
-          await new Promise((r) => setTimeout(r, 1000));
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
         }
 
-        if (!entrySuccess) {
-          console.error("Failed to register entry after payment. Contact support.");
+        if (!entryOk) {
+          console.error("Failed to register entry after payment.");
         }
 
-        // ✅ Odeme ve entry basarili — otomatik oyun baslat
         resetGameStateAndStart("tournament");
       } catch (e) {
         console.error("Tournament entry failed:", e);
