@@ -325,17 +325,17 @@ export default function Home() {
 
         if (!batchWorked) {
           // Fallback: klasik 2 ayrı imza
-          const approveTxHash = (await provider.request({
-            method: "eth_sendTransaction",
-            params: [
-              {
-                from: currentAddress as `0x${string}`,
-                to: USDC_ADDRESS as `0x${string}`,
-                data: approveData as `0x${string}`,
-              },
-            ],
-          })) as `0x${string}`;
-          await waitForTransaction(approveTxHash);
+        const approveTx = (await provider.request({
+              method: "eth_sendTransaction",
+              params: [{ from: currentAddress as `0x${string}`, to: USDC_ADDRESS as `0x${string}`, data: approveData as `0x${string}` }],
+            })) as `0x${string}`;
+            await waitForTransaction(approveTx);
+
+            const entryTx = (await provider.request({
+              method: "eth_sendTransaction",
+              params: [{ from: currentAddress as `0x${string}`, to: CONTRACT_ADDRESS as `0x${string}`, data: enterData as `0x${string}` }],
+            })) as `0x${string}`;
+            await waitForTransaction(entryTx);
 
           const entryTxHash = (await provider.request({
             method: "eth_sendTransaction",
