@@ -92,6 +92,20 @@ function isLeaderboardEntry(v: unknown): v is LeaderboardEntry {
   );
 }
 
+// ✅ robust parser: handles Redis returning object OR JSON string
+function parseEntry(v: unknown): LeaderboardEntry | null {
+  try {
+    if (!v) return null;
+    if (typeof v === "string") {
+      const parsed = JSON.parse(v);
+      return isLeaderboardEntry(parsed) ? parsed : null;
+    }
+    return isLeaderboardEntry(v) ? (v as LeaderboardEntry) : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseAllEntries(all: Record<string, string> | null | undefined) {
   const entries: LeaderboardEntry[] = Object.values(all || {})
     .map((v) => {
@@ -132,46 +146,51 @@ async function getHashEntryScore(key: string, fid: number): Promise<number | nul
 }
 
 // ---------- SAVE ----------
-// ✅ Guarantee: leaderboard never goes DOWN.
-// We only write to hashes when the score is a NEW BEST for that mode.
-export async function saveScore(mode: "practice" | "tournament", entry: LeaderboardEntry) {
+// ✅ Guarantee: leaderboard never goes DOWN and WILL update when score increases.
+// We determine previous score from BOTH bestKey and current leaderboard hash to avoid mismatch bugs.
+export async function saveScore(
+  mode: "practice" | "tournament",
+  entry: LeaderboardEntry
+) {
   const fidStr = String(entry.fid);
 
-  // 1) Determine NEW BEST using bestKey (source of truth)
   const bestKey = getBestKey(mode, entry.fid);
-  const prevBest = await redis.get<unknown>(bestKey);
+  const prevBestRaw = await redis.get<unknown>(bestKey);
+  const prevBestEntry = parseEntry(prevBestRaw);
+  const prevBestScoreFromKey = prevBestEntry?.score ?? 0;
 
-  const prevBestScore =
-    prevBest && isLeaderboardEntry(prevBest) ? prevBest.score : 0;
+  const key = getKey(mode);
+  const prevBestScoreFromHash = (await getHashEntryScore(key, entry.fid)) ?? 0;
 
-  const isNewBest = entry.score > prevBestScore;
+  // Source of truth: whichever is higher (fixes bestKey/hash mismatch)
+  const prevScore = Math.max(prevBestScoreFromKey, prevBestScoreFromHash);
 
-  // If NOT new best, do NOT overwrite leaderboard hashes (prevents 5000 -> 50 regression)
+  const isNewBest = entry.score > prevScore;
+
+  // If NOT new best, do NOT overwrite anything
   if (!isNewBest) {
     return;
   }
 
-  // 2) Update best key
+  // Update best key
   await redis.set(bestKey, entry);
 
-  // 3) Update main leaderboard hash (by fid) ONLY when new best
-  const key = getKey(mode);
+  // Update main leaderboard hash (by fid) ONLY when new best
   await redis.hset(key, { [fidStr]: JSON.stringify(entry) });
 
-  // 4) Practice legacy write (optional transition) — also ONLY when new best vs current legacy hash
+  // Practice legacy write (optional but safe for transition) — only when it improves
   if (mode === "practice") {
     const legacyKey = practiceLegacyWeekKey();
 
-    // Don't downgrade legacy hash either
-    const legacyPrevScore = await getHashEntryScore(legacyKey, entry.fid);
-    if (legacyPrevScore === null || entry.score > legacyPrevScore) {
+    const legacyPrevScore = (await getHashEntryScore(legacyKey, entry.fid)) ?? 0;
+    if (entry.score > legacyPrevScore) {
       await redis.hset(legacyKey, { [fidStr]: JSON.stringify(entry) });
     }
 
     const legacyBest = getLegacyBestKeyForPractice(entry.fid);
-    const prevLegacy = await redis.get<unknown>(legacyBest);
-    const prevLegacyScore =
-      prevLegacy && isLeaderboardEntry(prevLegacy) ? prevLegacy.score : 0;
+    const prevLegacyRaw = await redis.get<unknown>(legacyBest);
+    const prevLegacyEntry = parseEntry(prevLegacyRaw);
+    const prevLegacyScore = prevLegacyEntry?.score ?? 0;
 
     if (entry.score > prevLegacyScore) {
       await redis.set(legacyBest, entry);
@@ -180,7 +199,10 @@ export async function saveScore(mode: "practice" | "tournament", entry: Leaderbo
 }
 
 // ---------- READ ----------
-export async function getLeaderboard(mode: "practice" | "tournament", limit = 500) {
+export async function getLeaderboard(
+  mode: "practice" | "tournament",
+  limit = 500
+) {
   const safeLimit = Math.max(1, Math.min(1000, limit));
 
   // Tournament: unchanged
@@ -210,7 +232,8 @@ export async function getLeaderboard(mode: "practice" | "tournament", limit = 50
     for (const e of legacyEntries) {
       const bestKey = getBestKey("practice", e.fid);
       const prev = await redis.get<unknown>(bestKey);
-      const prevScore = prev && isLeaderboardEntry(prev) ? prev.score : 0;
+      const prevEntry = parseEntry(prev);
+      const prevScore = prevEntry?.score ?? 0;
       if (e.score > prevScore) {
         await redis.set(bestKey, e);
       }
@@ -233,17 +256,31 @@ export async function getTop5Tournament() {
   return getTop5("tournament");
 }
 
-export async function getPlayerBestScore(mode: "practice" | "tournament", fid: number) {
+export async function getPlayerBestScore(
+  mode: "practice" | "tournament",
+  fid: number
+) {
   const bestKey = getBestKey(mode, fid);
-  const best = await redis.get<unknown>(bestKey);
-  if (best && isLeaderboardEntry(best)) return best;
+  const bestRaw = await redis.get<unknown>(bestKey);
+  const best = parseEntry(bestRaw);
+  if (best) return best;
+
+  // Fallback to hash if bestKey missing/format mismatch
+  const fromHash = await redis.hget<string>(getKey(mode), String(fid));
+  if (fromHash) {
+    const parsed = parseEntry(fromHash);
+    if (parsed) {
+      await redis.set(bestKey, parsed);
+      return parsed;
+    }
+  }
 
   // Practice legacy fallback (only if needed)
   if (mode === "practice") {
     const legacyBestKey = getLegacyBestKeyForPractice(fid);
-    const legacy = await redis.get<unknown>(legacyBestKey);
-    if (legacy && isLeaderboardEntry(legacy)) {
-      // migrate into new best
+    const legacyRaw = await redis.get<unknown>(legacyBestKey);
+    const legacy = parseEntry(legacyRaw);
+    if (legacy) {
       await redis.set(bestKey, legacy);
       return legacy;
     }
