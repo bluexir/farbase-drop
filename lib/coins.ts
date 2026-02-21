@@ -10,6 +10,8 @@ export type Coin = {
   isSponsor?: boolean;
 };
 
+export type Platform = "base" | "farcaster";
+
 export const COINS: Coin[] = [
   {
     level: 1,
@@ -91,7 +93,7 @@ export const COINS: Coin[] = [
     glowColor: "#0052FF88",
     score: 128,
     iconUrl: "/farbase-logo.png",
-   },
+  },
   {
     level: 9,
     name: "Farcaster",
@@ -104,6 +106,22 @@ export const COINS: Coin[] = [
   },
 ];
 
-export function getCoinByLevel(level: number): Coin | null {
-  return COINS.find((c) => c.level === level) || null;
+export function getCoinByLevel(level: number, platform: Platform = "farcaster"): Coin | null {
+  const coin = COINS.find((c) => c.level === level) || null;
+  if (!coin) return null;
+
+  // ✅ Only override the level-9 coin skin for Base App
+  if (level === 9 && platform === "base") {
+    return {
+      ...coin,
+      name: "Coinbase",
+      symbol: "COINBASE",
+      iconUrl: "/coinbase.png",
+      // Coinbase / Base blue theme (premium, consistent)
+      color: "#0052FF",
+      glowColor: "#0052FF88",
+    };
+  }
+
+  return coin;
 }
