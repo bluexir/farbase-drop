@@ -328,15 +328,15 @@ export default function Home() {
             batchErr?.message?.includes("not found") ||
             batchErr?.message?.includes("Method")
           ) {
-            const approveTx = (await provider.request({
+         const approveTx = (await provider.request({
               method: "eth_sendTransaction",
-              params: [{ from: currentAddress, to: USDC_ADDRESS, data: approveData }],
+              params: [{ from: currentAddress as `0x${string}`, to: USDC_ADDRESS as `0x${string}`, data: approveData as `0x${string}` }],
             })) as `0x${string}`;
             await waitForTransaction(approveTx);
 
             const entryTx = (await provider.request({
               method: "eth_sendTransaction",
-              params: [{ from: currentAddress, to: CONTRACT_ADDRESS, data: enterData }],
+              params: [{ from: currentAddress as `0x${string}`, to: CONTRACT_ADDRESS as `0x${string}`, data: enterData as `0x${string}` }],
             })) as `0x${string}`;
             await waitForTransaction(entryTx);
           } else {
