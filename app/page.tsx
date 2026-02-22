@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 import GameCanvas from "@/components/GameCanvas";
-import Scoreboard from "@/components/Scoreboard";
-import GameOver from "@/components/GameOver";
+import Scoreboard from "@/components/Scoreboard.tsx";
+import GameOver from "@/components/GameOver.tsx";
 import MainMenu from "@/components/MainMenu";
 import Leaderboard from "@/components/Leaderboard";
 import AdminPanel from "@/components/AdminPanel";
