@@ -55,14 +55,27 @@ function genPurchaseId() {
   return `p_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function detectPlatformFromContext(ctx: any): Platform {
-  // Best-effort detection: we check any client/platform hints in context.
-  // If we see "base" anywhere in the client data, we treat it as Base App.
+function detectPlatform(context: any): Platform {
+  // 1) Context hints (best-effort)
   try {
-    const clientObj = ctx?.client ?? ctx?.frame?.client ?? ctx?.app?.client ?? ctx?.platform ?? ctx?.client?.platform ?? ctx?.client?.name;
+    const clientObj = context?.client ?? context?.frame?.client ?? context?.app?.client ?? context?.platform ?? context?.client?.platform ?? context?.client?.name;
     const s = JSON.stringify(clientObj ?? "").toLowerCase();
     if (s.includes("base")) return "base";
   } catch {}
+
+  // 2) Browser hints (more deterministic for Base App webview)
+  try {
+    const ref = (document.referrer || "").toLowerCase();
+    if (ref.includes("base.app")) return "base";
+    const ao = (window.location as any)?.ancestorOrigins;
+    if (ao && ao.length) {
+      for (let i = 0; i < ao.length; i++) {
+        const v = String(ao[i]).toLowerCase();
+        if (v.includes("base.app")) return "base";
+      }
+    }
+  } catch {}
+
   return "farcaster";
 }
 
@@ -80,7 +93,6 @@ async function tryCreateEntryWithRetry(address: string, purchaseId: string) {
     }
 
     const data = await res.json().catch(() => ({}));
-
     if (res.ok && data?.success) return true;
     return false;
   }
@@ -117,7 +129,7 @@ export default function Home() {
         const maybeFid = context?.user?.fid;
         setFid(typeof maybeFid === "number" ? maybeFid : null);
 
-        setPlatform(detectPlatformFromContext(context));
+        setPlatform(detectPlatform(context));
 
         await sdk.actions.ready();
         try {
@@ -133,7 +145,7 @@ export default function Home() {
   }, []);
 
   const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
-    // scoring logic unchanged; platform only affects labels/skins
+    // scoring logic unchanged
     const coinData = getCoinByLevel(toLevel);
     const increment = coinData?.score || 0;
     setScore((prev) => prev + increment);
@@ -158,6 +170,8 @@ export default function Home() {
 
       const currentAddress = address || "0x0000000000000000000000000000000000000000";
 
+      // NOTE: Base App scoring auth can be added later (address-based).
+      // For now we keep existing QuickAuth behavior.
       if (fid === null) {
         setScoreSaveError("Sign-in required to save score.");
         return;
@@ -240,7 +254,6 @@ export default function Home() {
         return;
       }
 
-      // Attempt check
       let hasAttempts = false;
       try {
         const res = await sdk.quickAuth.fetch("/api/remaining-attempts?mode=tournament");
@@ -276,10 +289,10 @@ export default function Home() {
           return;
         }
 
-        // --- Pending / Resume guard ---
         const weekKey = getWeekKeyUTC();
         const pendingKey = `farbase:pendingTournament:${currentAddress.toLowerCase()}:${weekKey}`;
 
+        // resume
         try {
           const raw = localStorage.getItem(pendingKey);
           if (raw) {
@@ -353,10 +366,10 @@ export default function Home() {
           localStorage.setItem(pendingKey, JSON.stringify(pending));
         } catch {}
 
-        // --- Prefer batch ---
         let paid = false;
         const p = provider as any;
 
+        // batch
         try {
           const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
 
@@ -412,7 +425,7 @@ export default function Home() {
             localStorage.setItem(pendingKey, JSON.stringify(pending));
           } catch {}
         } catch {
-          // --- Fallback: approve + enter ---
+          // fallback approve + enter
           try {
             const approveTx = (await provider.request({
               method: "eth_sendTransaction",
