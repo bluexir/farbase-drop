@@ -106,18 +106,18 @@ export const COINS: Coin[] = [
   },
 ];
 
+// ✅ Geriye dönük uyumlu: platform parametresi optional ve default "farcaster"
 export function getCoinByLevel(level: number, platform: Platform = "farcaster"): Coin | null {
   const coin = COINS.find((c) => c.level === level) || null;
   if (!coin) return null;
 
-  // ✅ Only override the level-9 coin skin for Base App
+  // ✅ Sadece level 9 coin’i Base App’te Coinbase skin’ine çevir
   if (level === 9 && platform === "base") {
     return {
       ...coin,
       name: "Coinbase",
       symbol: "COINBASE",
       iconUrl: "/coinbase.png",
-      // Coinbase / Base blue theme (premium, consistent)
       color: "#0052FF",
       glowColor: "#0052FF88",
     };
