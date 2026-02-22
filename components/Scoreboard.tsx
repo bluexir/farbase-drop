@@ -7,11 +7,9 @@ interface ScoreboardProps {
   mergeCount: number;
   highestLevel: number;
 
-  // Optional (for tournament UX)
   mode?: "practice" | "tournament";
   remainingAttempts?: number | null;
 
-  // platform-aware coin labels/icons
   platform?: Platform;
 }
 
