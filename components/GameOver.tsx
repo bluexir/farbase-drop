@@ -1,6 +1,7 @@
 "use client";
 
 import { getCoinByLevel, Platform } from "@/lib/coins";
+import type { Theme } from "@/app/page";
 
 interface GameOverProps {
   score: number;
@@ -18,6 +19,7 @@ interface GameOverProps {
 
   // ✅ New: platform-aware coin labels/icons
   platform?: Platform;
+  theme?: Theme;
 }
 
 export default function GameOver({
@@ -34,8 +36,10 @@ export default function GameOver({
   onMenu,
   onCast,
   platform = "farcaster",
+  theme = "dark",
 }: GameOverProps) {
   const highestCoin = getCoinByLevel(highestLevel, platform);
+  const isDark = theme === "dark";
 
   const mergesValue =
     typeof merges === "number"
@@ -47,12 +51,12 @@ export default function GameOver({
   const canPlayAgain = remaining === null || remaining === undefined || remaining > 0;
 
   return (
-    <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-10 rounded-xl px-6">
+    <div className={`absolute inset-0 ${isDark ? 'bg-black bg-opacity-80' : 'bg-white bg-opacity-90'} flex flex-col items-center justify-center z-10 rounded-xl px-6`}>
       <h2 className="text-3xl font-bold text-red-400 mb-2">Game Over</h2>
 
       {mode ? (
-        <p className="text-xs text-gray-400 mb-5">
-          Mode: <span className="text-white font-semibold">{mode}</span>
+        <p className={`text-xs mb-5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          Mode: <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{mode}</span>
         </p>
       ) : (
         <div className="mb-5" />
