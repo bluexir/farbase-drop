@@ -56,6 +56,7 @@ function genPurchaseId() {
 }
 
 function detectPlatform(context: any): Platform {
+  console.log("CONTEXT:", JSON.stringify(context));
   // 1) Context hints (best-effort)
   try {
     const clientObj = context?.client ?? context?.frame?.client ?? context?.app?.client ?? context?.platform ?? context?.client?.platform ?? context?.client?.name;
