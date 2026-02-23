@@ -1,6 +1,7 @@
 "use client";
 
 import { getCoinByLevel, Platform } from "@/lib/coins";
+import type { Theme } from "@/app/page";
 
 interface ScoreboardProps {
   score: number;
@@ -11,6 +12,7 @@ interface ScoreboardProps {
   remainingAttempts?: number | null;
 
   platform?: Platform;
+  theme?: Theme;
 }
 
 export default function Scoreboard({
@@ -20,8 +22,10 @@ export default function Scoreboard({
   mode,
   remainingAttempts,
   platform = "farcaster",
+  theme = "dark",
 }: ScoreboardProps) {
   const highestCoin = getCoinByLevel(highestLevel, platform);
+  const isDark = theme === "dark";
 
   const modeLabel =
     mode === "tournament" ? "Tournament" : mode === "practice" ? "Practice" : null;
@@ -34,11 +38,11 @@ export default function Scoreboard({
   return (
     <div className="w-full flex justify-between items-center px-2 py-3">
       <div className="flex flex-col">
-        <span className="text-gray-500 text-xs uppercase tracking-wide">Score</span>
+        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>Score</span>
         <span className="text-yellow-400 text-xl font-bold">{score}</span>
 
         {(modeLabel || attemptsLabel) && (
-          <span className="text-gray-400 text-[11px] mt-1">
+          <span className={`text-[11px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             {modeLabel}
             {attemptsLabel ? ` • ${attemptsLabel}` : ""}
           </span>
@@ -46,18 +50,18 @@ export default function Scoreboard({
       </div>
 
       <div className="flex flex-col items-center">
-        <span className="text-gray-500 text-xs uppercase tracking-wide">Merges</span>
-        <span className="text-white text-xl font-bold">{mergeCount}</span>
+        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>Merges</span>
+        <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{mergeCount}</span>
       </div>
 
       <div className="flex flex-col items-end">
-        <span className="text-gray-500 text-xs uppercase tracking-wide">Best</span>
+        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>Best</span>
         <div className="flex items-center gap-1">
           <div
             className="w-5 h-5 rounded-full"
             style={{ backgroundColor: highestCoin?.color || "#C3A634" }}
           />
-          <span className="text-white text-xl font-bold">
+          <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {highestCoin?.symbol || "DOGE"}
           </span>
         </div>
