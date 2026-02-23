@@ -217,7 +217,7 @@ export default function Home() {
         process.env.NEXT_PUBLIC_MINIAPP_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
         "https://farbase-drop.vercel.app";
-const byLine = platform === "farcaster" ? "\n\nBy @bluexir" : "\n\nBy @bluexir.farcaster.eth";
+const byLine = platform === "farcaster" ? "\n\nBy @bluexir.farcaster.eth";
       const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
       }\n\nPlay now: ${miniappUrl}${byLine}`;
