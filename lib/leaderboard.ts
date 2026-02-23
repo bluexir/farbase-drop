@@ -57,18 +57,18 @@ function practiceLegacyWeekKey() {
   return `leaderboard:practice:${getWeekKey()}`;
 }
 
-function tournamentWeekKey() {
-  return `leaderboard:tournament:${getWeekKey()}`;
+function tournamentCurrentKey() {
+  return `leaderboard:tournament:current`;
 }
 
 function getKey(mode: "practice" | "tournament") {
   if (mode === "practice") return practiceAllKey();
-  return tournamentWeekKey();
+  return tournamentCurrentKey();
 }
 
 function getBestKey(mode: "practice" | "tournament", fid: number) {
   if (mode === "practice") return `leaderboard:practice:best:${fid}`;
-  return `leaderboard:tournament:${getWeekKey()}:best:${fid}`;
+  return `leaderboard:tournament:current:best:${fid}`;
 }
 
 // Legacy best (older version wrote weekly best)
@@ -509,3 +509,78 @@ export async function migratePracticeAllTime(): Promise<{ migrated: number; tota
 
 // Export week key for external use
 export { getWeekKey };
+
+// ---------- TOURNAMENT CURRENT MANAGEMENT ----------
+
+// Payout sonrası current turnuvayı temizle
+export async function clearCurrentTournament(): Promise<{ cleared: number }> {
+  const currentKey = tournamentCurrentKey();
+  
+  // Mevcut katılımcıları al (best key'leri temizlemek için)
+  const all = await redis.hgetall<Record<string, string>>(currentKey);
+  const entries = parseAllEntries(all);
+  
+  // Best key'leri temizle
+  for (const entry of entries) {
+    const bestKey = `leaderboard:tournament:current:best:${entry.fid}`;
+    await redis.del(bestKey);
+  }
+  
+  // Current hash'i temizle
+  await redis.del(currentKey);
+  
+  return { cleared: entries.length };
+}
+
+// Eski haftalık tournament verilerini current'a taşı
+export async function migrateOldTournamentsToCurrent(): Promise<{ migrated: number; total: number }> {
+  const currentKey = tournamentCurrentKey();
+  
+  // Mevcut current verilerini al
+  const existingAll = await redis.hgetall<Record<string, string>>(currentKey);
+  const existingEntries = parseAllEntries(existingAll);
+  const entriesMap = new Map<number, LeaderboardEntry>();
+  
+  for (const e of existingEntries) {
+    entriesMap.set(e.fid, e);
+  }
+  
+  // Eski haftalık tournament key'lerini bul
+  const keys = await redis.keys("leaderboard:tournament:20*");
+  
+  let migrated = 0;
+  
+  for (const key of keys) {
+    // best key'leri atla
+    if (key.includes(":best:")) continue;
+    
+    const weekHash = await redis.hgetall<Record<string, string>>(key);
+    const weekEntries = parseAllEntries(weekHash);
+    
+    for (const entry of weekEntries) {
+      const existing = entriesMap.get(entry.fid);
+      // Sadece daha yüksek skor varsa güncelle
+      if (!existing || entry.score > existing.score) {
+        entriesMap.set(entry.fid, entry);
+        migrated++;
+      }
+    }
+  }
+  
+  // Tüm verileri current key'e yaz
+  if (entriesMap.size > 0) {
+    const payload: Record<string, string> = {};
+    for (const [fid, entry] of entriesMap) {
+      payload[String(fid)] = JSON.stringify(entry);
+    }
+    await redis.hset(currentKey, payload);
+    
+    // Best key'leri de güncelle
+    for (const [fid, entry] of entriesMap) {
+      const bestKey = `leaderboard:tournament:current:best:${fid}`;
+      await redis.set(bestKey, entry);
+    }
+  }
+  
+  return { migrated, total: entriesMap.size };
+}
