@@ -220,7 +220,7 @@ export default function Home() {
 
       const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
-      }\n\nPlay now: ${miniappUrl}${byLine}`;
+    }\n\nPlay now: ${miniappUrl}\n\nBy bluexir`;
 
       await sdk.actions.composeCast({ text, embeds: [miniappUrl] });
     } catch (e) {
