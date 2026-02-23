@@ -366,3 +366,146 @@ export async function enrichWithProfiles(entries: LeaderboardEntry[]) {
     return enriched;
   });
 }
+
+// ---------- TOURNAMENT ARCHIVE ----------
+// Tüm geçmiş turnuvaları sakla ve oku
+
+export type TournamentArchive = {
+  weekKey: string;
+  tournamentNumber: number;
+  entries: LeaderboardEntry[];
+  prizePool?: string;
+  winners?: {
+    address: string;
+    prize: string;
+  }[];
+  archivedAt: string;
+};
+
+// Turnuva bittiğinde TÜM sıralamayı archive'a kaydet
+export async function archiveTournament(
+  weekKey: string,
+  entries: LeaderboardEntry[],
+  prizePool?: string,
+  winners?: { address: string; prize: string }[]
+) {
+  // Turnuva numarasını hesapla
+  const archiveListKey = "tournament:archive:list";
+  const existingList = await redis.lrange<string>(archiveListKey, 0, -1);
+  const tournamentNumber = (existingList?.length || 0) + 1;
+
+  const archive: TournamentArchive = {
+    weekKey,
+    tournamentNumber,
+    entries,
+    prizePool,
+    winners,
+    archivedAt: new Date().toISOString(),
+  };
+
+  // Archive'ı kaydet
+  const archiveKey = `tournament:archive:${weekKey}`;
+  await redis.set(archiveKey, archive);
+
+  // Liste'ye ekle (en yenisi başta)
+  await redis.lpush(archiveListKey, weekKey);
+
+  return archive;
+}
+
+// Tüm geçmiş turnuva listesini getir
+export async function getTournamentArchiveList(): Promise<string[]> {
+  const archiveListKey = "tournament:archive:list";
+  const list = await redis.lrange<string>(archiveListKey, 0, -1);
+  return list || [];
+}
+
+// Belirli bir turnuvanın archive'ını getir
+export async function getTournamentArchive(weekKey: string): Promise<TournamentArchive | null> {
+  const archiveKey = `tournament:archive:${weekKey}`;
+  const raw = await redis.get<unknown>(archiveKey);
+  
+  if (!raw) return null;
+  
+  // Parse if string
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as TournamentArchive;
+    } catch {
+      return null;
+    }
+  }
+  
+  return raw as TournamentArchive;
+}
+
+// Tüm archive'ları getir (UI için)
+export async function getAllTournamentArchives(): Promise<TournamentArchive[]> {
+  const weekKeys = await getTournamentArchiveList();
+  const archives: TournamentArchive[] = [];
+
+  for (const weekKey of weekKeys) {
+    const archive = await getTournamentArchive(weekKey);
+    if (archive) {
+      archives.push(archive);
+    }
+  }
+
+  return archives;
+}
+
+// ---------- PRACTICE ALL-TIME MIGRATION ----------
+// Tüm geçmiş haftalık practice verilerini birleştir
+
+export async function migratePracticeAllTime(): Promise<{ migrated: number; total: number }> {
+  const allKey = practiceAllKey();
+  
+  // Redis'teki tüm practice haftalık key'lerini bul
+  // Pattern: leaderboard:practice:YYYY-MM-DD
+  const keys = await redis.keys("leaderboard:practice:20*");
+  
+  const allEntriesMap = new Map<number, LeaderboardEntry>();
+  
+  // Mevcut all-time verileri al
+  const existingAll = await redis.hgetall<Record<string, string>>(allKey);
+  const existingEntries = parseAllEntries(existingAll);
+  for (const e of existingEntries) {
+    allEntriesMap.set(e.fid, e);
+  }
+  
+  let migrated = 0;
+  
+  // Her haftalık key'den verileri al ve birleştir
+  for (const key of keys) {
+    // "leaderboard:practice:all" key'ini atla
+    if (key === allKey) continue;
+    // "best" key'lerini atla
+    if (key.includes(":best:")) continue;
+    
+    const weekHash = await redis.hgetall<Record<string, string>>(key);
+    const weekEntries = parseAllEntries(weekHash);
+    
+    for (const entry of weekEntries) {
+      const existing = allEntriesMap.get(entry.fid);
+      // Sadece daha yüksek skor varsa güncelle
+      if (!existing || entry.score > existing.score) {
+        allEntriesMap.set(entry.fid, entry);
+        migrated++;
+      }
+    }
+  }
+  
+  // Tüm verileri all-time key'e yaz
+  if (allEntriesMap.size > 0) {
+    const payload: Record<string, string> = {};
+    for (const [fid, entry] of allEntriesMap) {
+      payload[String(fid)] = JSON.stringify(entry);
+    }
+    await redis.hset(allKey, payload);
+  }
+  
+  return { migrated, total: allEntriesMap.size };
+}
+
+// Export week key for external use
+export { getWeekKey };
