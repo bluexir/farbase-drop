@@ -8,6 +8,7 @@ import {
   getAllTournamentArchives,
   getTournamentArchive,
   migratePracticeAllTime,
+  migrateOldTournamentsToCurrent,
 } from "@/lib/leaderboard";
 
 export async function GET(request: NextRequest) {
@@ -52,6 +53,15 @@ export async function GET(request: NextRequest) {
     if (type === "migrate-practice") {
       // Practice all-time migration (admin için bir kere çalıştırılacak)
       const result = await migratePracticeAllTime();
+      return NextResponse.json(
+        { success: true, ...result },
+        { status: 200 }
+      );
+    }
+
+    if (type === "migrate-tournament") {
+      // Eski haftalık tournament verilerini current'a taşı
+      const result = await migrateOldTournamentsToCurrent();
       return NextResponse.json(
         { success: true, ...result },
         { status: 200 }
