@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { Redis } from "@upstash/redis";
-import { getTop5Tournament } from "@/lib/leaderboard";
+import { getTop5Tournament, getLeaderboard, archiveTournament } from "@/lib/leaderboard";
 
 export const dynamic = "force-dynamic";
 
@@ -231,6 +231,24 @@ export async function GET(request: Request) {
       poolBefore: poolBalance.toString(),
       distributedAt: new Date().toISOString(),
     };
+
+    // Prize distribution percentages: 40%, 30%, 20%, 7%, 3%
+    const prizePercentages = [0.40, 0.30, 0.20, 0.07, 0.03];
+    const poolInUsdc = Number(ethers.formatUnits(poolBalance, 6));
+    const winnersWithPrizes = finalWinners.map((addr, i) => ({
+      address: addr,
+      prize: (poolInUsdc * prizePercentages[i]).toFixed(2),
+    }));
+
+    // Archive: TÜM turnuva sıralamasını kaydet (sadece top 5 değil)
+    const allTournamentEntries = await getLeaderboard("tournament", 1000);
+    await archiveTournament(
+      weekKey,
+      allTournamentEntries,
+      poolInUsdc.toFixed(2),
+      winnersWithPrizes
+    );
+    log("tournament_archived", { weekKey, totalEntries: allTournamentEntries.length });
 
     // 1) Bu weekKey ödendi (idempotent kilit)
     await redis.set(paidKey, 1);
