@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import { sdk } from '@farcaster/miniapp-sdk';
 import HowToPlay from './HowToPlay';
+import type { Theme } from '@/app/page';
 
 interface MainMenuProps {
   // ✅ Lazy auth için nullable
   fid: number | null;
+  theme: Theme;
   onPractice: () => void;
   onTournament: () => void;
   onLeaderboard: () => void;
@@ -50,6 +52,7 @@ async function fetchWithQuickAuth(fid: number | null, url: string, init?: Reques
 
 export default function MainMenu({
   fid,
+  theme,
   onPractice,
   onTournament,
   onLeaderboard,
@@ -62,6 +65,17 @@ export default function MainMenu({
   const [practiceResetIn, setPracticeResetIn] = useState<number | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+
+  // Theme colors
+  const isDark = theme === 'dark';
+  const colors = {
+    bg: isDark ? 'radial-gradient(circle at center, #0a0a1a 0%, #000000 100%)' : 'radial-gradient(circle at center, #ffffff 0%, #f0f0f0 100%)',
+    text: isDark ? '#fff' : '#1a1a1a',
+    textMuted: isDark ? '#888' : '#666',
+    textDimmed: isDark ? '#666' : '#888',
+    cardBg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+    border: isDark ? '#444' : '#ddd',
+  };
 
   useEffect(() => {
     async function fetchPrizePool() {
@@ -130,10 +144,10 @@ export default function MainMenu({
       style={{
         height: '100vh',
         overflowY: 'auto',
-        background: 'radial-gradient(circle at center, #0a0a1a 0%, #000000 100%)',
+        background: colors.bg,
         padding: '24px',
         paddingBottom: '40px',
-        color: '#fff',
+        color: colors.text,
         boxSizing: 'border-box',
       }}
     >
@@ -173,7 +187,7 @@ export default function MainMenu({
 
         <p
           style={{
-            color: '#666',
+            color: colors.textDimmed,
             fontSize: '0.8rem',
             marginBottom: '6px',
             textAlign: 'center',
@@ -189,7 +203,7 @@ export default function MainMenu({
           style={{
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.4)',
+            color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
             fontSize: '0.75rem',
             cursor: 'pointer',
             padding: '4px 0',
@@ -525,7 +539,7 @@ export default function MainMenu({
         </div>
       </div>
 
-      {showHowToPlay && <HowToPlay onClose={() => setShowHowToPlay(false)} />}
+      {showHowToPlay && <HowToPlay theme={theme} onClose={() => setShowHowToPlay(false)} />}
     </div>
   );
 }
