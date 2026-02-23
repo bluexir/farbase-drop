@@ -11,6 +11,8 @@ import AdminPanel from "@/components/AdminPanel";
 import { getCoinByLevel, Platform } from "@/lib/coins";
 import { GameLog, calculateScoreFromLog } from "@/lib/game-log";
 
+export type Theme = "light" | "dark";
+
 type Screen = "menu" | "practice" | "tournament" | "leaderboard" | "admin";
 
 type AttemptsResponse = {
@@ -56,7 +58,6 @@ function genPurchaseId() {
 }
 
 function detectPlatform(context: any): Platform {
-  console.log("CONTEXT:", JSON.stringify(context));
   // 1) Context hints (best-effort)
   try {
     const clientObj = context?.client ?? context?.frame?.client ?? context?.app?.client ?? context?.platform ?? context?.client?.platform ?? context?.client?.name;
@@ -107,6 +108,7 @@ export default function Home() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [platform, setPlatform] = useState<Platform>("farcaster");
+  const [theme, setTheme] = useState<Theme>("dark");
 
   const [screen, setScreen] = useState<Screen>("menu");
   const [gameOver, setGameOver] = useState(false);
@@ -220,7 +222,7 @@ export default function Home() {
 
       const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
-    }\n\nPlay now: ${miniappUrl}\n\nBy bluexir`;
+      }\n\nPlay now: ${miniappUrl}\n\nBy bluexir`;
 
       await sdk.actions.composeCast({ text, embeds: [miniappUrl] });
     } catch (e) {
@@ -512,8 +514,8 @@ export default function Home() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#fff",
-          background: "#000",
+          color: theme === "dark" ? "#fff" : "#000",
+          background: theme === "dark" ? "#000" : "#f5f5f5",
         }}
       >
         Loading...
@@ -521,11 +523,38 @@ export default function Home() {
     );
   }
 
+  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+
   return (
-    <div style={{ minHeight: "100vh", background: "#000" }}>
+    <div style={{ minHeight: "100vh", background: theme === "dark" ? "#000" : "#f5f5f5", position: "relative" }}>
+      {/* Theme Toggle Button */}
+      <button
+        onClick={toggleTheme}
+        style={{
+          position: "fixed",
+          top: "12px",
+          right: "12px",
+          zIndex: 9999,
+          background: theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+          border: `1px solid ${theme === "dark" ? "#333" : "#ddd"}`,
+          borderRadius: "50%",
+          width: "40px",
+          height: "40px",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "1.2rem",
+        }}
+        title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      >
+        {theme === "dark" ? "☀️" : "🌙"}
+      </button>
+
       {screen === "menu" && (
         <MainMenu
           fid={fid}
+          theme={theme}
           onPractice={() => startGame("practice")}
           onTournament={() => startGame("tournament")}
           onLeaderboard={() => {
@@ -537,7 +566,7 @@ export default function Home() {
       )}
 
       {screen === "leaderboard" && fid !== null && (
-        <Leaderboard fid={fid} onBack={() => setScreen("menu")} />
+        <Leaderboard fid={fid} theme={theme} onBack={() => setScreen("menu")} />
       )}
 
       {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
@@ -547,7 +576,9 @@ export default function Home() {
           style={{
             height: "100vh",
             overflow: "hidden",
-            background: "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
+            background: theme === "dark" 
+              ? "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)"
+              : "radial-gradient(circle at center, #ffffff 0%, #f5f5f5 100%)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -561,6 +592,7 @@ export default function Home() {
                   highestLevel={highestLevel}
                   mergeCount={mergeCount}
                   platform={platform}
+                  theme={theme}
                 />
               </div>
               <div
@@ -581,6 +613,7 @@ export default function Home() {
                   sessionId={`${fid ?? 0}-${gameKey}`}
                   onMerge={handleMerge}
                   onGameOver={handleGameOver}
+                  theme={theme}
                 />
               </div>
             </>
@@ -598,6 +631,7 @@ export default function Home() {
               onMenu={() => setScreen("menu")}
               onCast={handleCast}
               platform={platform}
+              theme={theme}
             />
           )}
         </div>
