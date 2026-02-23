@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCoinByLevel } from "@/lib/coins";
+import type { Theme } from "@/app/page";
 
 interface LeaderboardEntry {
   fid: number;
@@ -28,16 +29,27 @@ interface TournamentArchive {
 
 interface LeaderboardProps {
   fid: number;
+  theme: Theme;
   onBack: () => void;
 }
 
-export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
+export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
   const [tab, setTab] = useState<"tournament" | "practice">("tournament");
   const [tournamentData, setTournamentData] = useState<LeaderboardEntry[]>([]);
   const [practiceData, setPracticeData] = useState<LeaderboardEntry[]>([]);
   const [archives, setArchives] = useState<TournamentArchive[]>([]);
   const [expandedArchive, setExpandedArchive] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Theme colors
+  const isDark = theme === 'dark';
+  const colors = {
+    bg: isDark ? 'radial-gradient(circle at center, #0a0a1a 0%, #000 100%)' : 'radial-gradient(circle at center, #ffffff 0%, #f5f5f5 100%)',
+    text: isDark ? '#fff' : '#1a1a1a',
+    textMuted: isDark ? '#555' : '#888',
+    cardBg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+    border: isDark ? '#333' : '#ddd',
+  };
 
   useEffect(() => {
     async function fetchData() {
@@ -228,7 +240,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
       style={{
         height: "100vh",
         width: "100%",
-        background: "radial-gradient(circle at center, #0a0a1a 0%, #000 100%)",
+        background: colors.bg,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -261,7 +273,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
         >
           ← Back
         </button>
-        <span style={{ color: "#fff", fontWeight: "bold", fontSize: "1.1rem" }}>
+        <span style={{ color: colors.text, fontWeight: "bold", fontSize: "1.1rem" }}>
           📊 Leaderboard
         </span>
         <div style={{ width: "60px" }} />
@@ -275,7 +287,7 @@ export default function Leaderboard({ fid, onBack }: LeaderboardProps) {
           width: "100%",
           maxWidth: "424px",
           marginBottom: "20px",
-          background: "rgba(255,255,255,0.05)",
+          background: colors.cardBg,
           borderRadius: "12px",
           padding: "4px",
         }}
