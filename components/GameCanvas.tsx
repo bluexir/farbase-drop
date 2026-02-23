@@ -10,6 +10,7 @@ import {
 } from "@/lib/physics";
 import { getCoinByLevel } from "@/lib/coins";
 import { GameEvent, GameLog } from "@/lib/game-log";
+import type { Theme } from "@/app/page";
 
 interface GameCanvasProps {
   onMerge: (fromLevel: number, toLevel: number) => void;
@@ -18,6 +19,7 @@ interface GameCanvasProps {
   fid: number;
   mode: "practice" | "tournament";
   sessionId: string;
+  theme?: Theme;
 }
 
 export default function GameCanvas({
@@ -27,6 +29,7 @@ export default function GameCanvas({
   fid,
   mode,
   sessionId,
+  theme = "dark",
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<PhysicsEngine | null>(null);
