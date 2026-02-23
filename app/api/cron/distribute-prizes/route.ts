@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { Redis } from "@upstash/redis";
-import { getTop5Tournament, getLeaderboard, archiveTournament } from "@/lib/leaderboard";
+import { getTop5Tournament, getLeaderboard, archiveTournament, clearCurrentTournament } from "@/lib/leaderboard";
 
 export const dynamic = "force-dynamic";
 
@@ -249,6 +249,10 @@ export async function GET(request: Request) {
       winnersWithPrizes
     );
     log("tournament_archived", { weekKey, totalEntries: allTournamentEntries.length });
+
+    // Turnuva tamamlandı, current'ı temizle (yeni turnuva başlasın)
+    const clearResult = await clearCurrentTournament();
+    log("tournament_cleared", { weekKey, cleared: clearResult.cleared });
 
     // 1) Bu weekKey ödendi (idempotent kilit)
     await redis.set(paidKey, 1);
