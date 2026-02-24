@@ -100,14 +100,14 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
             ? "rgba(0,243,255,0.08)"
             : isWinner
             ? "rgba(124,58,237,0.1)"
-            : "rgba(255,255,255,0.05)",
+            : colors.cardBg,
           border: isYou
             ? "1px solid #00f3ff"
             : isWinner
             ? "1px solid rgba(124,58,237,0.5)"
             : index === 0
             ? "1px solid #FFD700"
-            : "1px solid #333",
+            : `1px solid ${colors.border}`,
           borderRadius: "12px",
           padding: "12px 16px",
           marginBottom: "8px",
@@ -135,7 +135,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
             borderRadius: "50%",
             overflow: "hidden",
             flexShrink: 0,
-            background: "#222",
+            background: isDark ? "#222" : "#ddd",
           }}
         >
           {entry.pfpUrl ? (
@@ -152,7 +152,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#555",
+                color: colors.textMuted,
                 fontSize: "0.75rem",
                 fontWeight: "bold",
               }}
@@ -167,7 +167,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <p
               style={{
-                color: "#fff",
+                color: colors.text,
                 fontSize: "0.85rem",
                 fontWeight: "bold",
                 margin: 0,
@@ -195,7 +195,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
             )}
           </div>
           {entry.username && (
-            <p style={{ color: "#555", fontSize: "0.7rem", margin: "2px 0 0 0" }}>
+            <p style={{ color: colors.textMuted, fontSize: "0.7rem", margin: "2px 0 0 0" }}>
               {entry.username}
             </p>
           )}
@@ -299,7 +299,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
             background: tab === "tournament" ? "#7c3aed" : "transparent",
             border: "none",
             borderRadius: "10px",
-            color: "#fff",
+            color: tab === "tournament" ? "#fff" : colors.text,
             padding: "10px",
             fontSize: "0.85rem",
             fontWeight: "bold",
@@ -316,7 +316,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
             background: tab === "practice" ? "#00f3ff" : "transparent",
             border: "none",
             borderRadius: "10px",
-            color: tab === "practice" ? "#000" : "#fff",
+            color: tab === "practice" ? "#000" : colors.text,
             padding: "10px",
             fontSize: "0.85rem",
             fontWeight: "bold",
@@ -341,7 +341,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
         }}
       >
         {loading ? (
-          <p style={{ color: "#555", textAlign: "center", fontSize: "0.85rem" }}>
+          <p style={{ color: colors.textMuted, textAlign: "center", fontSize: "0.85rem" }}>
             Loading...
           </p>
         ) : tab === "practice" ? (
@@ -349,13 +349,13 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
           data.length === 0 ? (
             <div
               style={{
-                background: "rgba(255,255,255,0.05)",
+                background: colors.cardBg,
                 borderRadius: "16px",
                 padding: "32px 24px",
                 textAlign: "center",
               }}
             >
-              <p style={{ color: "#555", fontSize: "0.85rem" }}>
+              <p style={{ color: colors.textMuted, fontSize: "0.85rem" }}>
                 No scores yet. Play a game first!
               </p>
             </div>
@@ -396,13 +396,13 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
               {tournamentData.length === 0 ? (
                 <div
                   style={{
-                    background: "rgba(255,255,255,0.05)",
+                    background: colors.cardBg,
                     borderRadius: "12px",
                     padding: "20px",
                     textAlign: "center",
                   }}
                 >
-                  <p style={{ color: "#555", fontSize: "0.85rem", margin: 0 }}>
+                  <p style={{ color: colors.textMuted, fontSize: "0.85rem", margin: 0 }}>
                     No entries yet this week.
                   </p>
                 </div>
@@ -431,8 +431,8 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
                   <div
                     key={archive.weekKey}
                     style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid #333",
+                      background: colors.cardBg,
+                      border: `1px solid ${colors.border}`,
                       borderRadius: "12px",
                       marginBottom: "8px",
                       overflow: "hidden",
@@ -460,7 +460,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
                         <span style={{ color: "#eab308", fontWeight: "bold", fontSize: "0.9rem" }}>
                           🏆 Tournament {archive.tournamentNumber}
                         </span>
-                        <span style={{ color: "#666", fontSize: "0.75rem" }}>
+                        <span style={{ color: colors.textMuted, fontSize: "0.75rem" }}>
                           {formatDate(archive.archivedAt)}
                         </span>
                       </div>
@@ -470,7 +470,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
                             ${archive.prizePool}
                           </span>
                         )}
-                        <span style={{ color: "#666", fontSize: "0.8rem" }}>
+                        <span style={{ color: colors.textMuted, fontSize: "0.8rem" }}>
                           {expandedArchive === archive.weekKey ? "▲" : "▼"}
                         </span>
                       </div>
