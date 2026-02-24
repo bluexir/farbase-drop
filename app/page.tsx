@@ -532,19 +532,19 @@ export default function Home() {
         onClick={toggleTheme}
         style={{
           position: "fixed",
-          top: "12px",
-          right: "12px",
+          top: "10px",
+          right: "10px",
           zIndex: 9999,
           background: theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
           border: `1px solid ${theme === "dark" ? "#333" : "#ddd"}`,
           borderRadius: "50%",
-          width: "40px",
-          height: "40px",
+          width: "30px",
+          height: "30px",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "1.2rem",
+          fontSize: "1.00rem",
         }}
         title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
       >
