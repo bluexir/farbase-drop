@@ -366,9 +366,9 @@ export default function MainMenu({
               onLeaderboard();
             }}
             style={{
-              background: 'rgba(255,255,255,0.05)',
+              background: colors.cardBg,
               backdropFilter: 'blur(12px)',
-              border: '1px solid #444',
+              border: `1px solid ${isDark ? '#444' : '#ddd'}`,
               borderRadius: '16px',
               padding: '18px',
               cursor: fid ? 'pointer' : 'not-allowed',
@@ -386,9 +386,9 @@ export default function MainMenu({
             }}
           >
             <div style={{ marginBottom: '8px' }}>
-              <span style={{ fontSize: '1rem', fontWeight: 900, color: '#fff' }}>Leaderboard</span>
+              <span style={{ fontSize: '1rem', fontWeight: 900, color: colors.text }}>Leaderboard</span>
             </div>
-            <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
+            <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0 }}>
               {fid ? "This week's rankings - Live updates" : 'Sign-in required for Leaderboard'}
             </p>
           </div>
@@ -427,11 +427,11 @@ export default function MainMenu({
               </span>
             </div>
 
-            <div style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: 6 }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: 6, color: colors.text }}>
               {'$' + prizePool + ' USDC'}
             </div>
 
-            <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
+            <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0 }}>
               Weekly distribution - Top 5 winners
             </p>
           </div>
@@ -440,7 +440,7 @@ export default function MainMenu({
           {recommendedApps.length > 0 && (
             <div
               style={{
-                background: 'rgba(255,255,255,0.05)',
+                background: colors.cardBg,
                 backdropFilter: 'blur(12px)',
                 border: '1px solid rgba(124,58,237,0.7)',
                 borderRadius: '16px',
@@ -482,11 +482,11 @@ export default function MainMenu({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '12px',
-                      background: 'rgba(0,0,0,0.35)',
+                      background: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.05)',
                       border: '1px solid rgba(124,58,237,0.35)',
                       borderRadius: '12px',
                       padding: '12px',
-                      color: '#fff',
+                      color: colors.text,
                       transition: 'border-color 0.2s ease',
                       width: '100%',
                       cursor: 'pointer',
@@ -502,7 +502,7 @@ export default function MainMenu({
                       <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{app.name}</div>
                       <div
                         style={{
-                          color: '#aaa',
+                          color: colors.textMuted,
                           fontSize: '0.72rem',
                           marginTop: 3,
                           overflow: 'hidden',
