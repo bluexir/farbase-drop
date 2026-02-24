@@ -243,7 +243,7 @@ export default function GameCanvas({
     }
 
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    ctx.fillStyle = "#0a0a0f";
+    ctx.fillStyle = theme === "dark" ? "#0a0a0f" : "#e5e5e5";
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     ctx.beginPath();
@@ -264,7 +264,7 @@ export default function GameCanvas({
     }
 
     animFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [drawCoin, drawPreview, onGameOver]);
+  }, [drawCoin, drawPreview, onGameOver, theme]);
 
   const getX = useCallback((e: React.TouchEvent | React.MouseEvent): number => {
     const canvas = canvasRef.current;
