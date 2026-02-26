@@ -77,6 +77,18 @@ export default function MainMenu({
     border: isDark ? '#444' : '#ddd',
   };
 
+  // Onboarding: İlk kez giren kullanıcıya How to Play göster
+  useEffect(() => {
+    try {
+      const onboarded = localStorage.getItem('farbase_onboarded');
+      if (!onboarded) {
+        setShowHowToPlay(true);
+      }
+    } catch (e) {
+      // localStorage erişim hatası (SSR veya privacy mode)
+    }
+  }, []);
+
   useEffect(() => {
     async function fetchPrizePool() {
       try {
@@ -539,7 +551,19 @@ export default function MainMenu({
         </div>
       </div>
 
-      {showHowToPlay && <HowToPlay theme={theme} onClose={() => setShowHowToPlay(false)} />}
+      {showHowToPlay && (
+        <HowToPlay
+          theme={theme}
+          onClose={() => {
+            setShowHowToPlay(false);
+            try {
+              localStorage.setItem('farbase_onboarded', 'true');
+            } catch (e) {
+              // localStorage erişim hatası
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
