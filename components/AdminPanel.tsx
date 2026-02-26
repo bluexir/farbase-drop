@@ -352,7 +352,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       setError("Body max 200 characters");
       return;
     }
-    if (!confirm(`Send notification to ${subscribedUsers} users?`)) return;
 
     setSendingNotification(true);
     try {
