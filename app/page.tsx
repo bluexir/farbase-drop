@@ -545,7 +545,7 @@ const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
             if (fid === null) return;
             setScreen("leaderboard");
           }}
-          onAdmin={isAdmin && fid !== null ? () => setScreen("admin") : undefined}
+         onAdmin={fid !== null ? () => setScreen("admin") : undefined}
         />
       )}
 
