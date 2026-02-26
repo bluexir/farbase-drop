@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-
 export async function GET() {
   const manifest = {
     accountAssociation: {
@@ -24,7 +23,7 @@ export async function GET() {
       splashImageUrl: "https://farbase-drop.vercel.app/splash.png",
       ogImageUrl: "https://farbase-drop.vercel.app/image.png",
       splashBackgroundColor: "#0a0a1a",
-      webhookUrl:"webhookUrl": "https://api.neynar.com/f/app/3e323438-9d12-4c5f-bbe1-31c9a8dbe33d/event",
+      webhookUrl: "https://api.neynar.com/f/app/3e323438-9d12-4c5f-bbe1-31c9a8dbe33d/event",
       subtitle: "Crypto Merge Game on Base",
       description:
         "Drop and merge crypto coins to score points. Practice free daily or enter weekly tournaments with USDC. Top 5 players win the prize pool. Built on Base mainnet.",
@@ -52,7 +51,7 @@ export async function GET() {
       splashImageUrl: "https://farbase-drop.vercel.app/splash.png",
       ogImageUrl: "https://farbase-drop.vercel.app/image.png",
       splashBackgroundColor: "#0a0a1a",
-      webhookUrl: "webhookUrl": "https://api.neynar.com/f/app/3e323438-9d12-4c5f-bbe1-31c9a8dbe33d/event",
+      webhookUrl: "https://api.neynar.com/f/app/3e323438-9d12-4c5f-bbe1-31c9a8dbe33d/event",
       subtitle: "Crypto Merge Game on Base",
       description:
         "Drop and merge crypto coins to score points. Practice free daily or enter weekly tournaments with USDC. Top 5 players win the prize pool. Built on Base mainnet.",
@@ -64,7 +63,6 @@ export async function GET() {
         "Drop and merge crypto coins. Compete in weekly tournaments and win USDC prizes on Base.",
     },
   };
-
   return NextResponse.json(manifest, {
     headers: {
       'Content-Type': 'application/json',
