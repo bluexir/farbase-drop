@@ -58,26 +58,10 @@ function genPurchaseId() {
 }
 
 function detectPlatform(context: any): Platform {
-  // 1) Context hints (best-effort)
-  try {
-    const clientObj = context?.client ?? context?.frame?.client ?? context?.app?.client ?? context?.platform ?? context?.client?.platform ?? context?.client?.name;
-    const s = JSON.stringify(clientObj ?? "").toLowerCase();
-    if (s.includes("base")) return "base";
-  } catch {}
-
-  // 2) Browser hints (more deterministic for Base App webview)
-  try {
-    const ref = (document.referrer || "").toLowerCase();
-    if (ref.includes("base.app")) return "base";
-    const ao = (window.location as any)?.ancestorOrigins;
-    if (ao && ao.length) {
-      for (let i = 0; i < ao.length; i++) {
-        const v = String(ao[i]).toLowerCase();
-        if (v.includes("base.app")) return "base";
-      }
-    }
-  } catch {}
-
+  // Base App'in resmi clientFid'si: 309857
+  if (context?.client?.clientFid === 309857) {
+    return "base";
+  }
   return "farcaster";
 }
 
