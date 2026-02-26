@@ -8,7 +8,7 @@ import {
   DANGER_LINE,
   PhysicsEngine,
 } from "@/lib/physics";
-import { getCoinByLevel } from "@/lib/coins";
+import { getCoinByLevel, Platform } from "@/lib/coins";
 import { GameEvent, GameLog } from "@/lib/game-log";
 import type { Theme } from "@/app/page";
 
@@ -20,6 +20,7 @@ interface GameCanvasProps {
   mode: "practice" | "tournament";
   sessionId: string;
   theme?: Theme;
+  platform?: Platform;
 }
 
 export default function GameCanvas({
@@ -30,6 +31,7 @@ export default function GameCanvas({
   mode,
   sessionId,
   theme = "dark",
+  platform = "farcaster",
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<PhysicsEngine | null>(null);
@@ -65,7 +67,7 @@ export default function GameCanvas({
       const levels = Array.from({ length: 9 }, (_, i) => i + 1);
 
       const loadPromises = levels.map((level) => {
-        const coinData = getCoinByLevel(level);
+        const coinData = getCoinByLevel(level, platform);
         if (!coinData?.iconUrl) return Promise.resolve();
 
         return new Promise<void>((resolve) => {
@@ -86,7 +88,7 @@ export default function GameCanvas({
     };
 
     loadImages();
-  }, []);
+  }, [platform]);
 
   const addEvent = useCallback((type: GameEvent["type"], data: GameEvent["data"]) => {
     const event: GameEvent = {
@@ -99,7 +101,7 @@ export default function GameCanvas({
 
   const drawCoin = useCallback(
     (ctx: CanvasRenderingContext2D, x: number, y: number, level: number) => {
-      const coinData = getCoinByLevel(level);
+      const coinData = getCoinByLevel(level, platform);
       if (!coinData) return;
 
       const img = coinImagesRef.current.get(level);
@@ -169,12 +171,12 @@ export default function GameCanvas({
 
       ctx.restore();
     },
-    []
+    [platform]
   );
 
   const drawPreview = useCallback(
     (ctx: CanvasRenderingContext2D) => {
-      const coinData = getCoinByLevel(nextLevelRef.current);
+      const coinData = getCoinByLevel(nextLevelRef.current, platform);
       if (!coinData) return;
 
       const x = Math.max(
@@ -195,7 +197,7 @@ export default function GameCanvas({
       drawCoin(ctx, x, coinData.radius, nextLevelRef.current);
       ctx.globalAlpha = 1;
     },
-    [drawCoin]
+    [drawCoin, platform]
   );
 
   const handleMergeInternal = useCallback(
@@ -232,7 +234,7 @@ export default function GameCanvas({
       let cumulativeScore = 0;
       for (const event of gameLogRef.current.events) {
         if (event.type === "MERGE" && event.data.toLevel) {
-          const coinData = getCoinByLevel(event.data.toLevel);
+          const coinData = getCoinByLevel(event.data.toLevel, platform);
           if (coinData) cumulativeScore += coinData.score;
         }
       }
@@ -264,7 +266,7 @@ export default function GameCanvas({
     }
 
     animFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [drawCoin, drawPreview, onGameOver, theme]);
+  }, [drawCoin, drawPreview, onGameOver, theme, platform]);
 
   const getX = useCallback((e: React.TouchEvent | React.MouseEvent): number => {
     const canvas = canvasRef.current;
