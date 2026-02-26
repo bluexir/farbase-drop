@@ -222,7 +222,7 @@ export default function Home() {
 
       const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
-      }\n\nPlay now: ${miniappUrl}\n\nBy bluexir`;
+      }\n\nPlay now: ${miniappUrl}\n\nBy @bluexir`;
 
       await sdk.actions.composeCast({ text, embeds: [miniappUrl] });
     } catch (e) {
@@ -532,19 +532,19 @@ export default function Home() {
         onClick={toggleTheme}
         style={{
           position: "fixed",
-          top: "10px",
-          right: "10px",
+          top: "12px",
+          right: "12px",
           zIndex: 9999,
           background: theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
           border: `1px solid ${theme === "dark" ? "#333" : "#ddd"}`,
           borderRadius: "50%",
-          width: "30px",
-          height: "30px",
+          width: "40px",
+          height: "40px",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "1.00rem",
+          fontSize: "1.2rem",
         }}
         title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
       >
@@ -614,6 +614,7 @@ export default function Home() {
                   onMerge={handleMerge}
                   onGameOver={handleGameOver}
                   theme={theme}
+                  platform={platform}
                 />
               </div>
             </>
