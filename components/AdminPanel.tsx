@@ -198,6 +198,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [newAppDesc, setNewAppDesc] = useState("");
   const [newAppUrl, setNewAppUrl] = useState("");
 
+  // Notification states
+  const [notificationTitle, setNotificationTitle] = useState("");
+  const [notificationBody, setNotificationBody] = useState("");
+  const [subscribedUsers, setSubscribedUsers] = useState<number>(0);
+  const [sendingNotification, setSendingNotification] = useState(false);
+
   // ── Helpers ────────────────────────────────────────
 
   const showSuccess = useCallback((msg: string) => {
@@ -230,6 +236,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
         const appsData = await adminFetch("/api/admin/apps");
         setApps(appsData.apps || []);
+
+        // Load subscribed users count
+        try {
+          const notifData = await adminFetch("/api/admin/send-notification");
+          setSubscribedUsers(notifData.subscribedUsers || 0);
+        } catch {
+          // Ignore if endpoint not available
+        }
       } catch (e) {
         setError(String(e));
       } finally {
@@ -322,6 +336,43 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     },
     [apps, saveApps]
   );
+
+  // ── Send Notification ──────────────────────────────
+
+  const sendNotification = useCallback(async () => {
+    if (!notificationTitle.trim() || !notificationBody.trim()) {
+      setError("Title and body are required");
+      return;
+    }
+    if (notificationTitle.length > 32) {
+      setError("Title max 32 characters");
+      return;
+    }
+    if (notificationBody.length > 200) {
+      setError("Body max 200 characters");
+      return;
+    }
+    if (!confirm(`Send notification to ${subscribedUsers} users?`)) return;
+
+    setSendingNotification(true);
+    try {
+      const data = await adminFetch("/api/admin/send-notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: notificationTitle.trim(),
+          body: notificationBody.trim(),
+        }),
+      });
+      showSuccess(`Notification sent to ${data.sent} users!`);
+      setNotificationTitle("");
+      setNotificationBody("");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSendingNotification(false);
+    }
+  }, [notificationTitle, notificationBody, subscribedUsers, showSuccess]);
 
   // ── Render ────────────────────────────────────────
 
@@ -842,6 +893,83 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               Add
             </button>
           </div>
+        </Section>
+
+        {/* Send Push Notification */}
+        <Section title="🔔 Send Push Notification">
+          <p
+            style={{
+              color: "#888",
+              fontSize: "0.75rem",
+              marginTop: 0,
+              marginBottom: "12px",
+            }}
+          >
+            {subscribedUsers} users subscribed to notifications
+          </p>
+
+          <Label text="Title (max 32 chars)" />
+          <Input
+            value={notificationTitle}
+            onChange={setNotificationTitle}
+            placeholder="🏆 Tournament Ended!"
+          />
+          <div
+            style={{
+              fontSize: "0.65rem",
+              color: notificationTitle.length > 32 ? "#ef4444" : "#555",
+              marginTop: "-6px",
+              marginBottom: "8px",
+            }}
+          >
+            {notificationTitle.length}/32
+          </div>
+
+          <Label text="Body (max 200 chars)" />
+          <textarea
+            value={notificationBody}
+            onChange={(e) => setNotificationBody(e.target.value)}
+            placeholder="Check the leaderboard to see if you won!"
+            style={{
+              width: "100%",
+              background: "rgba(0,0,0,0.35)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "10px",
+              padding: "10px 12px",
+              color: "#fff",
+              fontSize: "0.85rem",
+              outline: "none",
+              marginBottom: "4px",
+              boxSizing: "border-box",
+              minHeight: "80px",
+              resize: "vertical",
+              fontFamily: "inherit",
+            }}
+          />
+          <div
+            style={{
+              fontSize: "0.65rem",
+              color: notificationBody.length > 200 ? "#ef4444" : "#555",
+              marginBottom: "12px",
+            }}
+          >
+            {notificationBody.length}/200
+          </div>
+
+          <Btn
+            onClick={sendNotification}
+            disabled={
+              sendingNotification ||
+              !notificationTitle.trim() ||
+              !notificationBody.trim() ||
+              subscribedUsers === 0
+            }
+            color="#7c3aed"
+          >
+            {sendingNotification
+              ? "Sending..."
+              : `Send to ${subscribedUsers} Users`}
+          </Btn>
         </Section>
 
         {/* Token Management */}
