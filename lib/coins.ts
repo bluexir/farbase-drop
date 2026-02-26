@@ -115,9 +115,9 @@ export function getCoinByLevel(level: number, platform: Platform = "farcaster"):
   if (level === 9 && platform === "base") {
     return {
       ...coin,
-      name: "Coinbase",
-      symbol: "COINBASE",
-      iconUrl: "/coinbase.png",
+      name: "Base",
+      symbol: "BASE",
+      iconUrl: "/Base.png",
       color: "#0052FF",
       glowColor: "#0052FF88",
     };
