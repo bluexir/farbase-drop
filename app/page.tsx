@@ -58,10 +58,26 @@ function genPurchaseId() {
 }
 
 function detectPlatform(context: any): Platform {
-  // Base App'in resmi clientFid'si: 309857
-  if (context?.client?.clientFid === 309857) {
-    return "base";
-  }
+  // 1) Context hints (best-effort)
+  try {
+    const clientObj = context?.client ?? context?.frame?.client ?? context?.app?.client ?? context?.platform ?? context?.client?.platform ?? context?.client?.name;
+    const s = JSON.stringify(clientObj ?? "").toLowerCase();
+    if (s.includes("base")) return "base";
+  } catch {}
+
+  // 2) Browser hints (more deterministic for Base App webview)
+  try {
+    const ref = (document.referrer || "").toLowerCase();
+    if (ref.includes("base.app")) return "base";
+    const ao = (window.location as any)?.ancestorOrigins;
+    if (ao && ao.length) {
+      for (let i = 0; i < ao.length; i++) {
+        const v = String(ao[i]).toLowerCase();
+        if (v.includes("base.app")) return "base";
+      }
+    }
+  } catch {}
+
   return "farcaster";
 }
 
@@ -117,6 +133,25 @@ export default function Home() {
         setFid(typeof maybeFid === "number" ? maybeFid : null);
 
         setPlatform(detectPlatform(context));
+
+        // Notification token'ı kaydet (mevcut kullanıcılar için)
+        const notifDetails = context?.client?.notificationDetails;
+        if (maybeFid && notifDetails?.url && notifDetails?.token) {
+          try {
+            await fetch("/api/webhook", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                event: "notifications_enabled",
+                fid: maybeFid,
+                notificationDetails: {
+                  url: notifDetails.url,
+                  token: notifDetails.token,
+                },
+              }),
+            });
+          } catch {}
+        }
 
         await sdk.actions.ready();
         try {
@@ -203,10 +238,10 @@ export default function Home() {
         process.env.NEXT_PUBLIC_MINIAPP_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
         "https://farbase-drop.vercel.app";
-const mention = platform === "base" ? "bluexir.farcaster.eth" : "@bluexir";
-const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
-  coinData?.symbol || "?"
-}\n\nPlay now: ${miniappUrl}\n\nBy ${mention}`;
+
+      const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
+        coinData?.symbol || "?"
+      }\n\nPlay now: ${miniappUrl}\n\nBy @bluexir`;
 
       await sdk.actions.composeCast({ text, embeds: [miniappUrl] });
     } catch (e) {
@@ -545,7 +580,7 @@ const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
             if (fid === null) return;
             setScreen("leaderboard");
           }}
-         onAdmin={fid !== null ? () => setScreen("admin") : undefined}
+          onAdmin={isAdmin && fid !== null ? () => setScreen("admin") : undefined}
         />
       )}
 
