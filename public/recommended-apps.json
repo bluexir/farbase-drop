@@ -4,7 +4,15 @@
       "name": "Unfollow Cleaner",
       "icon": "🧹",
       "description": "Clean your Farcaster follows based on Neynar score. View who doesn't follow you back, sort by engagement, and unfollow individually or in bulk.",
-      "url": "https://farcaster.xyz/miniapps/Wh66UZgEFojt/unfollow-cleaner"
+      "url": "https://farcaster.xyz/miniapps/Wh66UZgEFojt/unfollow-cleaner",
+      "platform": "farcaster"
+    },
+    {
+      "name": "Unfollow Cleaner",
+      "icon": "🧹",
+      "description": "Clean your follows based on Neynar score. View who doesn't follow you back, sort by engagement, and unfollow individually or in bulk.",
+      "url": "https://base.app/app/unfollow-cleaner.vercel.app",
+      "platform": "base"
     }
   ]
 }
