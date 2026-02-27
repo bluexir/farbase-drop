@@ -1,41 +1,64 @@
 "use client";
 
 import type { Theme } from "@/app/page";
+import { Lang, t } from "@/lib/i18n";
 
 interface HowToPlayProps {
   theme: Theme;
+  lang: Lang;
   onClose: () => void;
 }
 
-const rules = [
-  {
-    icon: "🪙",
-    title: "Merge Coins",
-    text: "Drop coins into the container. When two same-level coins touch, they merge into a higher-level coin.",
-  },
-  {
-    icon: "📈",
-    title: "Score Points",
-    text: "Each merge earns points based on the new coin's level. Higher merges = more points. Total score determines rank.",
-  },
-  {
-    icon: "🎮",
-    title: "Practice Mode",
-    text: "Free daily attempts. No rewards. Perfect for warming up and testing strategies.",
-  },
-  {
-    icon: "🏆",
-    title: "Tournament Mode",
-    text: "Pay 1 USDC to enter. Each entry gives 3 attempts. Top 5 scores win the weekly prize pool.",
-  },
-  {
-    icon: "⚠️",
-    title: "Fair Play",
-    text: "Scores are validated server-side. Cheating or tampering will invalidate your score.",
-  },
-];
+const rulesByLang: Record<Lang, { icon: string; title: string; text: string }[]> = {
+  en: [
+    {
+      icon: "🪙",
+      title: "Merge Coins",
+      text: "Drop coins into the container. When two same-level coins touch, they merge into a higher-level coin.",
+    },
+    {
+      icon: "📈",
+      title: "Score Points",
+      text: "Each merge earns points based on the new coin's level. Higher merges = more points. Total score determines rank.",
+    },
+    {
+      icon: "🎮",
+      title: "Play Modes",
+      text: "Practice is free. Tournament costs 1 USDC per entry and gives 3 attempts. Top players win from the prize pool.",
+    },
+    {
+      icon: "⚡",
+      title: "Be Fast",
+      text: "You have limited time. Plan your drops to avoid filling the container and aim for high-level merges.",
+    },
+  ],
+  tr: [
+    {
+      icon: "🪙",
+      title: "Coin Birleştir",
+      text: "Coin'leri kaba bırak. Aynı seviyedeki iki coin temas edince daha yüksek seviyeye birleşir.",
+    },
+    {
+      icon: "📈",
+      title: "Puan Kazan",
+      text: "Her birleşme, oluşan yeni coin seviyesine göre puan verir. Seviye yükseldikçe puan artar. Toplam puan sıralamayı belirler.",
+    },
+    {
+      icon: "🎮",
+      title: "Oyun Modları",
+      text: "Pratik ücretsizdir. Turnuva giriş ücreti 1 USDC’dir ve giriş başına 3 deneme verir. En iyi oyuncular ödül havuzundan kazanır.",
+    },
+    {
+      icon: "⚡",
+      title: "Hızlı Ol",
+      text: "Süren sınırlı. Kabı doldurmadan planlı bırak, yüksek seviye birleşmelere odaklan.",
+    },
+  ],
+};
 
-export default function HowToPlay({ theme, onClose }: HowToPlayProps) {
+const rules = rulesByLang;
+
+export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
   const isDark = theme === 'dark';
   
   return (
@@ -107,7 +130,7 @@ export default function HowToPlay({ theme, onClose }: HowToPlayProps) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {rules.map((r, i) => (
+          {rules[lang].map((r, i) => (
             <div
               key={i}
               style={{
