@@ -11,6 +11,7 @@ import Leaderboard from "@/components/Leaderboard";
 import AdminPanel from "@/components/AdminPanel";
 import { getCoinByLevel, Platform } from "@/lib/coins";
 import { GameLog, calculateScoreFromLog } from "@/lib/game-log";
+import { Lang, t } from "@/lib/i18n";
 
 export type Theme = "light" | "dark";
 
@@ -94,6 +95,21 @@ export default function Home() {
 
   const [platform, setPlatform] = useState<Platform>("farcaster");
   const [theme, setTheme] = useState<Theme>("dark");
+  const [lang, setLang] = useState<Lang>("en");
+
+  useEffect(() => {
+    // Language: persisted user choice, otherwise device default
+    try {
+      const saved = localStorage.getItem("farbase_lang");
+      if (saved === "en" || saved === "tr") {
+        setLang(saved);
+        return;
+      }
+    } catch (_e) {}
+
+    const nav = typeof navigator !== "undefined" ? navigator.language : "en";
+    setLang(nav.toLowerCase().startsWith("tr") ? "tr" : "en");
+  }, []);
 
   const [screen, setScreen] = useState<Screen>("menu");
   const [gameOver, setGameOver] = useState(false);
@@ -526,44 +542,30 @@ export default function Home() {
           background: theme === "dark" ? "#000" : "#f5f5f5",
         }}
       >
-        Loading...
+        {t(lang, "common.loading")}
       </div>
     );
   }
 
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+  const toggleLang = () => {
+    setLang((prev) => {
+      const next: Lang = prev === "en" ? "tr" : "en";
+      try { localStorage.setItem("farbase_lang", next); } catch (_e) {}
+      return next;
+    });
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: theme === "dark" ? "#000" : "#f5f5f5", position: "relative" }}>
-      {/* Theme Toggle Button */}
-      <button
-        onClick={toggleTheme}
-        style={{
-          position: "fixed",
-          top: "12px",
-          right: "12px",
-          zIndex: 9999,
-          background: theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
-          border: `1px solid ${theme === "dark" ? "#333" : "#ddd"}`,
-          borderRadius: "50%",
-          width: "40px",
-          height: "40px",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: "1.2rem",
-        }}
-        title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-      >
-        {theme === "dark" ? "☀️" : "🌙"}
-      </button>
-
       {screen === "menu" && (
         <MainMenu
           fid={fid}
           theme={theme}
           platform={platform}
+          lang={lang}
+          onToggleLang={toggleLang}
+          onToggleTheme={toggleTheme}
           onPractice={() => startGame("practice")}
           onTournament={() => startGame("tournament")}
           onLeaderboard={() => {
@@ -575,7 +577,7 @@ export default function Home() {
       )}
 
       {screen === "leaderboard" && fid !== null && (
-        <Leaderboard fid={fid} theme={theme} onBack={() => setScreen("menu")} />
+        <Leaderboard fid={fid} theme={theme} lang={lang} onBack={() => setScreen("menu")} />
       )}
 
       {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
@@ -598,8 +600,10 @@ export default function Home() {
               <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
                 <Scoreboard
                   score={score}
+              lang={lang}
                   highestLevel={highestLevel}
                   mergeCount={mergeCount}
+                  lang={lang}
                   platform={platform}
                   theme={theme}
                 />
@@ -630,6 +634,7 @@ export default function Home() {
           ) : (
             <GameOver
               score={score}
+              lang={lang}
               highestLevel={highestLevel}
               mergeCount={mergeCount}
               scoreSaved={scoreSaved}
