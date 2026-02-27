@@ -8,6 +8,7 @@ import type { Theme } from '@/app/page';
 interface MainMenuProps {
   fid: number | null;
   theme: Theme;
+  platform={platform};
   platform: "farcaster" | "base";
   onPractice: () => void;
   onTournament: () => void;
