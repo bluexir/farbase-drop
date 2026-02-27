@@ -6,7 +6,6 @@ import HowToPlay from './HowToPlay';
 import type { Theme } from '@/app/page';
 
 interface MainMenuProps {
-  // ✅ Lazy auth için nullable
   fid: number | null;
   theme: Theme;
   platform: "farcaster" | "base";
@@ -33,7 +32,6 @@ function formatCountdown(totalSeconds: number): string {
   return `${h}h ${m}m`;
 }
 
-// ✅ Lazy auth: FID yoksa QuickAuth çağırma
 async function fetchWithQuickAuth(fid: number | null, url: string, init?: RequestInit) {
   if (!fid) return await fetch(url, init);
 
@@ -68,7 +66,6 @@ export default function MainMenu({
   const [isAdmin, setIsAdmin] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
-  // Theme colors
   const isDark = theme === 'dark';
   const colors = {
     bg: isDark ? 'radial-gradient(circle at center, #0a0a1a 0%, #000000 100%)' : 'radial-gradient(circle at center, #ffffff 0%, #f0f0f0 100%)',
@@ -79,16 +76,13 @@ export default function MainMenu({
     border: isDark ? '#444' : '#ddd',
   };
 
-  // Onboarding: İlk kez giren kullanıcıya How to Play göster
   useEffect(() => {
     try {
       const onboarded = localStorage.getItem('farbase_onboarded');
       if (!onboarded) {
         setShowHowToPlay(true);
       }
-    } catch (e) {
-      // localStorage erişim hatası (SSR veya privacy mode)
-    }
+    } catch (e) {}
   }, []);
 
   useEffect(() => {
@@ -102,22 +96,21 @@ export default function MainMenu({
       }
     }
 
- async function fetchRecommendedApps() {
-  try {
-    const res = await fetch('/recommended-apps.json');
-    const data = await res.json();
-    const allApps = data.apps || [];
-    const filtered = allApps.filter((app: any) => 
-      !app.platform || app.platform === platform || app.platform === "both"
-    );
-    setRecommendedApps(filtered);
-  } catch (e) {
-    console.error('Failed to fetch recommended apps:', e);
-  }
-}  }
+    async function fetchRecommendedApps() {
+      try {
+        const res = await fetch('/recommended-apps.json');
+        const data = await res.json();
+        const allApps = data.apps || [];
+        const filtered = allApps.filter((app: any) => 
+          !app.platform || app.platform === platform || app.platform === "both"
+        );
+        setRecommendedApps(filtered);
+      } catch (e) {
+        console.error('Failed to fetch recommended apps:', e);
+      }
+    }
 
     async function fetchAttempts() {
-      // ✅ FID yoksa auth gerektiren attempt endpointlerini çağırma
       if (!fid) {
         setPracticeAttempts(3);
         setTournamentAttempts(0);
@@ -153,7 +146,7 @@ export default function MainMenu({
     fetchPrizePool();
     fetchRecommendedApps();
     fetchAttempts();
-  }, [fid]);
+  }, [fid, platform]);
 
   const practiceClickable = isAdmin || practiceAttempts > 0;
 
@@ -179,7 +172,6 @@ export default function MainMenu({
           alignItems: 'stretch',
         }}
       >
-        {/* Header */}
         <div
           style={{
             display: 'flex',
@@ -215,7 +207,6 @@ export default function MainMenu({
           Skill-Based Crypto Merge &bull; Base Mainnet
         </p>
 
-        {/* How to Play */}
         <button
           onClick={() => setShowHowToPlay(true)}
           style={{
@@ -234,7 +225,6 @@ export default function MainMenu({
           How to Play
         </button>
 
-        {/* Admin Panel */}
         {isAdmin && onAdmin && (
           <button
             onClick={onAdmin}
@@ -262,7 +252,6 @@ export default function MainMenu({
             gap: '16px',
           }}
         >
-          {/* Practice */}
           <div
             onClick={practiceClickable ? onPractice : undefined}
             style={{
@@ -319,10 +308,8 @@ export default function MainMenu({
             </p>
           </div>
 
-          {/* Tournament */}
           <div
             onClick={() => {
-              // ✅ Lazy auth: FID yoksa tournament başlatma (Base preview)
               if (!fid) return;
               onTournament();
             }}
@@ -377,7 +364,6 @@ export default function MainMenu({
             </p>
           </div>
 
-          {/* Leaderboard */}
           <div
             onClick={() => {
               if (!fid) return;
@@ -411,7 +397,6 @@ export default function MainMenu({
             </p>
           </div>
 
-          {/* Prize Pool */}
           <div
             style={{
               background: 'rgba(255,255,255,0.05)',
@@ -454,7 +439,6 @@ export default function MainMenu({
             </p>
           </div>
 
-          {/* Recommended Apps */}
           {recommendedApps.length > 0 && (
             <div
               style={{
@@ -563,9 +547,7 @@ export default function MainMenu({
             setShowHowToPlay(false);
             try {
               localStorage.setItem('farbase_onboarded', 'true');
-            } catch (e) {
-              // localStorage erişim hatası
-            }
+            } catch (e) {}
           }}
         />
       )}
