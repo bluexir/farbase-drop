@@ -2,11 +2,13 @@
 
 import { getCoinByLevel, Platform } from "@/lib/coins";
 import type { Theme } from "@/app/page";
+import { Lang, t } from "@/lib/i18n";
 
 interface ScoreboardProps {
   score: number;
   mergeCount: number;
   highestLevel: number;
+  lang: Lang;
 
   mode?: "practice" | "tournament";
   remainingAttempts?: number | null;
@@ -38,7 +40,7 @@ export default function Scoreboard({
   return (
     <div className="w-full flex justify-between items-center px-2 py-3">
       <div className="flex flex-col">
-        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>Score</span>
+        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>{lang === 'tr' ? 'Puan' : 'Score'}</span>
         <span className="text-yellow-400 text-xl font-bold">{score}</span>
 
         {(modeLabel || attemptsLabel) && (
@@ -50,7 +52,7 @@ export default function Scoreboard({
       </div>
 
       <div className="flex flex-col items-center">
-        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>Merges</span>
+        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>{lang === 'tr' ? 'Birleşme' : 'Merges'}</span>
         <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{mergeCount}</span>
       </div>
 
