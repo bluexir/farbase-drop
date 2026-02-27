@@ -2,9 +2,11 @@
 
 import { getCoinByLevel, Platform } from "@/lib/coins";
 import type { Theme } from "@/app/page";
+import { Lang, t } from "@/lib/i18n";
 
 interface GameOverProps {
   score: number;
+  lang: Lang;
   merges?: number;
   mergeCount?: number;
   highestLevel: number;
@@ -24,6 +26,7 @@ interface GameOverProps {
 
 export default function GameOver({
   score,
+  lang,
   merges,
   mergeCount,
   highestLevel,
@@ -52,11 +55,11 @@ export default function GameOver({
 
   return (
     <div className={`absolute inset-0 ${isDark ? 'bg-black bg-opacity-80' : 'bg-white bg-opacity-90'} flex flex-col items-center justify-center z-10 rounded-xl px-6`}>
-      <h2 className="text-3xl font-bold text-red-400 mb-2">Game Over</h2>
+      <h2 className="text-3xl font-bold text-red-400 mb-2">{t(lang, 'gameover.title')}</h2>
 
       {mode ? (
         <p className={`text-xs mb-5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-          Mode: <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{mode}</span>
+          {lang === 'tr' ? 'Mod:' : 'Mode:'} <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{mode}</span>
         </p>
       ) : (
         <div className="mb-5" />
@@ -72,23 +75,23 @@ export default function GameOver({
             textAlign: "center",
           }}
         >
-          🏅 New Personal Best!
+          {lang === 'tr' ? '🏅 Yeni Kişisel Rekor!' : '🏅 New Personal Best!'}
         </p>
       )}
 
       <div className="w-full bg-gray-800 rounded-lg p-4 mb-4 space-y-3 max-w-md">
         <div className="flex justify-between">
-          <span className="text-gray-400">Score</span>
+          <span className="text-gray-400">{lang === 'tr' ? 'Puan' : 'Score'}</span>
           <span className="text-yellow-400 font-bold text-lg">{score}</span>
         </div>
 
         <div className="flex justify-between">
-          <span className="text-gray-400">Merges</span>
+          <span className="text-gray-400">{lang === 'tr' ? 'Birleşme' : 'Merges'}</span>
           <span className="text-white font-bold text-lg">{mergesValue}</span>
         </div>
 
         <div className="flex justify-between items-center">
-          <span className="text-gray-400">Best Coin</span>
+          <span className="text-gray-400">{lang === 'tr' ? 'En İyi Coin' : 'Best Coin'}</span>
           <div className="flex items-center gap-2">
             <div
               className="w-6 h-6 rounded-full"
@@ -110,7 +113,7 @@ export default function GameOver({
         }}
       >
         {scoreSaved
-          ? "✓ Score saved"
+          ? "✓ {lang === 'tr' ? 'Skor kaydedildi' : 'Score saved'}"
           : scoreSaveError
           ? `✗ ${scoreSaveError}`
           : "Saving score..."}
@@ -150,7 +153,7 @@ export default function GameOver({
           marginBottom: "10px",
         }}
       >
-        🗣️ Cast Score
+        {lang === 'tr' ? '🗣️ Skoru Paylaş' : '🗣️ Cast Score'}
       </button>
 
       {/* Play Again */}
@@ -190,7 +193,7 @@ export default function GameOver({
             cursor: "pointer",
           }}
         >
-          ⬅️ Back to Menu
+          {t(lang, 'gameover.backToMenu')}
         </button>
       ) : null}
     </div>
