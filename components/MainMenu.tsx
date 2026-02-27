@@ -4,11 +4,15 @@ import { useEffect, useState } from 'react';
 import { sdk } from '@farcaster/miniapp-sdk';
 import HowToPlay from './HowToPlay';
 import type { Theme } from '@/app/page';
+import { Lang, t } from '@/lib/i18n';
 
 interface MainMenuProps {
   fid: number | null;
   theme: Theme;
   platform: "farcaster" | "base";
+  lang: Lang;
+  onToggleLang: () => void;
+  onToggleTheme: () => void;
   onPractice: () => void;
   onTournament: () => void;
   onLeaderboard: () => void;
@@ -53,6 +57,9 @@ export default function MainMenu({
   fid,
   theme,
   platform,
+  lang,
+  onToggleLang,
+  onToggleTheme,
   onPractice,
   onTournament,
   onLeaderboard,
@@ -193,6 +200,44 @@ export default function MainMenu({
           >
             FarBase Drop
           </h1>
+            <div style={{ position: 'absolute', right: 0, top: 0, display: 'flex', gap: '8px' }}>
+              <button
+                onClick={onToggleLang}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(0,243,255,0.25)',
+                  borderRadius: '999px',
+                  padding: '6px 10px',
+                  color: colors.text,
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+                title={lang === 'en' ? t(lang, 'menu.switchToTurkish') : t(lang, 'menu.switchToEnglish')}
+              >
+                {lang === 'en' ? 'TR' : 'EN'}
+              </button>
+
+              <button
+                onClick={onToggleTheme}
+                style={{
+                  background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  border: `1px solid ${theme === 'dark' ? '#333' : '#ddd'}`,
+                  borderRadius: '50%',
+                  width: '34px',
+                  height: '34px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1rem',
+                  color: colors.text,
+                }}
+                title={theme === 'dark' ? t(lang, 'menu.switchToLight') : t(lang, 'menu.switchToDark')}
+              >
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </button>
+            </div>
         </div>
 
         <p
@@ -204,7 +249,7 @@ export default function MainMenu({
             letterSpacing: '0.05em',
           }}
         >
-          Skill-Based Crypto Merge &bull; Base Mainnet
+          {t(lang, 'menu.subtitle')}
         </p>
 
         <button
@@ -222,7 +267,7 @@ export default function MainMenu({
             textUnderlineOffset: '3px',
           }}
         >
-          How to Play
+          {t(lang, 'menu.howToPlay')}
         </button>
 
         {isAdmin && onAdmin && (
@@ -240,7 +285,7 @@ export default function MainMenu({
               marginBottom: '14px',
             }}
           >
-            Admin Panel
+            {t(lang, 'menu.adminPanel')}
           </button>
         )}
 
@@ -283,7 +328,7 @@ export default function MainMenu({
                 marginBottom: '8px',
               }}
             >
-              <span style={{ fontSize: '1rem', fontWeight: 900, color: '#00f3ff' }}>Practice</span>
+              <span style={{ fontSize: '1rem', fontWeight: 900, color: '#00f3ff' }}>{t(lang, 'menu.practice')}</span>
               <span
                 style={{
                   background: practiceClickable ? '#fff' : '#555',
@@ -294,7 +339,7 @@ export default function MainMenu({
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? 'unlimited' : practiceAttempts + '/3'}
+                {isAdmin ? t(lang, 'menu.unlimited') : practiceAttempts + '/3'}
               </span>
             </div>
 
@@ -342,7 +387,7 @@ export default function MainMenu({
               }}
             >
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#ff00ff' }}>
-                Tournament
+                {t(lang, 'menu.tournament')}
               </span>
               <span
                 style={{
@@ -354,7 +399,7 @@ export default function MainMenu({
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? 'unlimited' : tournamentAttempts + '/3'}
+                {isAdmin ? t(lang, 'menu.unlimited') : tournamentAttempts + '/3'}
               </span>
             </div>
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
@@ -390,10 +435,10 @@ export default function MainMenu({
             }}
           >
             <div style={{ marginBottom: '8px' }}>
-              <span style={{ fontSize: '1rem', fontWeight: 900, color: colors.text }}>Leaderboard</span>
+              <span style={{ fontSize: '1rem', fontWeight: 900, color: colors.text }}>{t(lang, 'menu.leaderboard')}</span>
             </div>
             <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0 }}>
-              {fid ? "This week's rankings - Live updates" : 'Sign-in required for Leaderboard'}
+              {fid ? t(lang, 'menu.thisWeeksRankings') : t(lang, 'menu.signInRequiredLeaderboard')}
             </p>
           </div>
 
@@ -543,6 +588,7 @@ export default function MainMenu({
       {showHowToPlay && (
         <HowToPlay
           theme={theme}
+          lang={lang}
           onClose={() => {
             setShowHowToPlay(false);
             try {
