@@ -9,6 +9,7 @@ interface MainMenuProps {
   // ✅ Lazy auth için nullable
   fid: number | null;
   theme: Theme;
+  platform: "farcaster" | "base";
   onPractice: () => void;
   onTournament: () => void;
   onLeaderboard: () => void;
