@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getCoinByLevel } from "@/lib/coins";
 import type { Theme } from "@/app/page";
+import { Lang, t } from "@/lib/i18n";
 
 interface LeaderboardEntry {
   fid: number;
@@ -30,10 +31,11 @@ interface TournamentArchive {
 interface LeaderboardProps {
   fid: number;
   theme: Theme;
+  lang: Lang;
   onBack: () => void;
 }
 
-export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
+export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardProps) {
   const [tab, setTab] = useState<"tournament" | "practice">("tournament");
   const [tournamentData, setTournamentData] = useState<LeaderboardEntry[]>([]);
   const [practiceData, setPracticeData] = useState<LeaderboardEntry[]>([]);
@@ -271,7 +273,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
             cursor: "pointer",
           }}
         >
-          ← Back
+          {t(lang, 'leaderboard.back')}
         </button>
         <span style={{ color: colors.text, fontWeight: "bold", fontSize: "1.1rem" }}>
           📊 Leaderboard
@@ -342,7 +344,7 @@ export default function Leaderboard({ fid, theme, onBack }: LeaderboardProps) {
       >
         {loading ? (
           <p style={{ color: colors.textMuted, textAlign: "center", fontSize: "0.85rem" }}>
-            Loading...
+            {t(lang, 'leaderboard.loading')}
           </p>
         ) : tab === "practice" ? (
           // Practice Tab - Sadece liste
