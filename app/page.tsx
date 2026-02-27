@@ -223,7 +223,7 @@ export default function Home() {
         process.env.NEXT_PUBLIC_APP_URL ||
         "https://farbase-drop.vercel.app";
 
-      const mention = platform === "base" ? "bluexir.farcaster.eth" : "@bluexir";
+      const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
       const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
       }\n\nPlay now: ${miniappUrl}\n\nBy ${mention}`;
