@@ -600,7 +600,6 @@ export default function Home() {
               <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
                 <Scoreboard
                   score={score}
-              lang={lang}
                   highestLevel={highestLevel}
                   mergeCount={mergeCount}
                   lang={lang}
