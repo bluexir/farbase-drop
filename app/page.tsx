@@ -559,6 +559,7 @@ export default function Home() {
         <MainMenu
           fid={fid}
           theme={theme}
+          platform={platform}
           onPractice={() => startGame("practice")}
           onTournament={() => startGame("tournament")}
           onLeaderboard={() => {
