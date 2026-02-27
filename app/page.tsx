@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
+import { Attribution } from "ox/erc8021";
 import GameCanvas from "@/components/GameCanvas";
 import Scoreboard from "@/components/Scoreboard";
 import GameOver from "@/components/GameOver";
@@ -379,6 +380,7 @@ export default function Home() {
         // batch
         try {
           const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
+          const builderCodeSuffix = Attribution.toDataSuffix({ codes: ["bc_va80qhc4"] });
 
           const batchParams: any = {
             version: "2.0.0",
@@ -390,10 +392,12 @@ export default function Home() {
             ],
           };
 
+          batchParams.capabilities = {
+            dataSuffix: { value: builderCodeSuffix },
+          };
+
           if (paymasterUrl) {
-            batchParams.capabilities = {
-              paymasterService: { url: paymasterUrl },
-            };
+            batchParams.capabilities.paymasterService = { url: paymasterUrl };
           }
 
           const batchId = (await p.request({
