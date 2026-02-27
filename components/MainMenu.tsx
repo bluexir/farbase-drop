@@ -54,6 +54,7 @@ async function fetchWithQuickAuth(fid: number | null, url: string, init?: Reques
 export default function MainMenu({
   fid,
   theme,
+  platform,
   onPractice,
   onTournament,
   onLeaderboard,
@@ -101,15 +102,19 @@ export default function MainMenu({
       }
     }
 
-    async function fetchRecommendedApps() {
-      try {
-        const res = await fetch('/recommended-apps.json');
-        const data = await res.json();
-        setRecommendedApps(data.apps || []);
-      } catch (e) {
-        console.error('Failed to fetch recommended apps:', e);
-      }
-    }
+ async function fetchRecommendedApps() {
+  try {
+    const res = await fetch('/recommended-apps.json');
+    const data = await res.json();
+    const allApps = data.apps || [];
+    const filtered = allApps.filter((app: any) => 
+      !app.platform || app.platform === platform || app.platform === "both"
+    );
+    setRecommendedApps(filtered);
+  } catch (e) {
+    console.error('Failed to fetch recommended apps:', e);
+  }
+}  }
 
     async function fetchAttempts() {
       // ✅ FID yoksa auth gerektiren attempt endpointlerini çağırma
@@ -551,7 +556,6 @@ export default function MainMenu({
           <div style={{ height: 18 }} />
         </div>
       </div>
-
       {showHowToPlay && (
         <HowToPlay
           theme={theme}
