@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { requireQuickAuthUser, isInvalidTokenError } from "@/lib/quick-auth-server";
 import {
+  getPracticeRemaining,
   getTournamentRemaining,
+  getPracticeResetInSeconds,
   TOURNAMENT_ATTEMPTS_PER_ENTRY,
 } from "@/lib/attempts";
 
@@ -33,14 +35,17 @@ export async function GET(req: NextRequest) {
     const admin = checkAdmin(fid);
 
     if (mode === "practice") {
-      // Practice artık sınırsız - remaining ve limit null döndür
+      const remaining = await getPracticeRemaining(redis, fid, admin);
+      const resetInSeconds = getPracticeResetInSeconds();
+
+      // Practice artık sınırsız - remaining Infinity, resetInSeconds null döner
       return NextResponse.json({
         mode,
-        remaining: null, // null = sınırsız
-        limit: null,     // null = sınırsız
+        remaining: remaining === Infinity ? null : remaining, // null = sınırsız
+        limit: null, // sınırsız
         isAdmin: admin,
-        resetAt: null,
-        resetInSeconds: null,
+        resetAt: resetInSeconds !== null ? Date.now() + resetInSeconds * 1000 : null,
+        resetInSeconds,
       });
     }
 
