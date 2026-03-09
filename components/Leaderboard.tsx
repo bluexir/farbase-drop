@@ -33,9 +33,10 @@ interface LeaderboardProps {
   theme: Theme;
   lang: Lang;
   onBack: () => void;
+  onChallenge?: (targetFid: number, targetUsername: string, targetScore: number) => void;
 }
 
-export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardProps) {
+export default function Leaderboard({ fid, theme, lang, onBack, onChallenge }: LeaderboardProps) {
   const [tab, setTab] = useState<"tournament" | "practice">("tournament");
   const [tournamentData, setTournamentData] = useState<LeaderboardEntry[]>([]);
   const [practiceData, setPracticeData] = useState<LeaderboardEntry[]>([]);
@@ -86,11 +87,13 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
     entry: LeaderboardEntry,
     index: number,
     isWinner?: boolean,
-    prizeAmount?: string
+    prizeAmount?: string,
+    showChallengeButton?: boolean
   ) => {
     const coin = getCoinByLevel(entry.highestLevel);
     const isYou = entry.fid === fid;
     const name = entry.displayName || entry.username || `Player ${index + 1}`;
+    const canChallenge = showChallengeButton && onChallenge && !isYou && entry.username;
 
     return (
       <div
@@ -198,13 +201,13 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
           </div>
           {entry.username && (
             <p style={{ color: colors.textMuted, fontSize: "0.7rem", margin: "2px 0 0 0" }}>
-              {entry.username}
+              @{entry.username}
             </p>
           )}
         </div>
 
-        {/* Score + Prize */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px", flexShrink: 0 }}>
+        {/* Score + Prize + Challenge */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <div
               style={{
@@ -222,6 +225,29 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
             <span style={{ color: "#10b981", fontSize: "0.7rem", fontWeight: "bold" }}>
               ${prizeAmount} USDC
             </span>
+          )}
+          {canChallenge && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onChallenge(entry.fid, entry.username!, entry.score);
+              }}
+              style={{
+                background: "linear-gradient(135deg, #f97316, #fb923c)",
+                border: "none",
+                borderRadius: "6px",
+                padding: "4px 8px",
+                color: "#fff",
+                fontSize: "0.65rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "3px",
+              }}
+            >
+              ⚔️ {t(lang, 'leaderboard.challengePlayer')}
+            </button>
           )}
         </div>
       </div>
@@ -347,7 +373,7 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
             {t(lang, 'leaderboard.loading')}
           </p>
         ) : tab === "practice" ? (
-          // Practice Tab - Sadece liste
+          // Practice Tab - Liste + Challenge butonları
           data.length === 0 ? (
             <div
               style={{
@@ -362,7 +388,7 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
               </p>
             </div>
           ) : (
-            data.map((entry, index) => renderEntry(entry, index))
+            data.map((entry, index) => renderEntry(entry, index, false, undefined, true))
           )
         ) : (
           // Tournament Tab - Bu Hafta + Önceki Turnuvalar
@@ -409,7 +435,7 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
                   </p>
                 </div>
               ) : (
-                tournamentData.map((entry, index) => renderEntry(entry, index))
+                tournamentData.map((entry, index) => renderEntry(entry, index, false, undefined, false))
               )}
             </div>
 
@@ -485,7 +511,7 @@ export default function Leaderboard({ fid, theme, lang, onBack }: LeaderboardPro
                           const winner = archive.winners?.find(
                             (w) => w.address.toLowerCase() === entry.address.toLowerCase()
                           );
-                          return renderEntry(entry, index, index < 5, winner?.prize);
+                          return renderEntry(entry, index, index < 5, winner?.prize, false);
                         })}
                       </div>
                     )}
