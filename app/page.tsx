@@ -9,18 +9,21 @@ import GameOver from "@/components/GameOver";
 import MainMenu from "@/components/MainMenu";
 import Leaderboard from "@/components/Leaderboard";
 import AdminPanel from "@/components/AdminPanel";
+import ChallengeList from "@/components/ChallengeList";
+import NewChallengePopup from "@/components/NewChallengePopup";
+import ChallengeResult from "@/components/ChallengeResult";
 import { getCoinByLevel, Platform } from "@/lib/coins";
 import { GameLog, calculateScoreFromLog } from "@/lib/game-log";
 import { Lang, t } from "@/lib/i18n";
 
 export type Theme = "light" | "dark";
 
-type Screen = "menu" | "practice" | "tournament" | "leaderboard" | "admin";
+type Screen = "menu" | "practice" | "tournament" | "leaderboard" | "admin" | "challenges" | "challenge-game";
 
 type AttemptsResponse = {
   mode: "practice" | "tournament";
-  remaining: number;
-  limit: number;
+  remaining: number | null;
+  limit: number | null;
   isAdmin: boolean;
   resetAt: number | null;
   resetInSeconds: number | null;
@@ -31,6 +34,22 @@ type PendingPurchase = {
   purchaseId: string;
   stage: "initiated" | "paid";
   method?: "batch" | "fallback";
+};
+
+type Challenge = {
+  id: string;
+  creatorFid: number;
+  creatorUsername: string;
+  creatorScore: number | null;
+  targetFid: number | null;
+  targetUsername: string | null;
+  targetScore: number | null;
+  type: "open" | "direct";
+  status: "pending" | "accepted" | "completed" | "expired";
+  winner: "creator" | "target" | "tie" | null;
+  createdAt: number;
+  expiresAt: number;
+  completedAt: number | null;
 };
 
 function sleep(ms: number) {
@@ -89,6 +108,7 @@ async function tryCreateEntryWithRetry(address: string, purchaseId: string) {
 
 export default function Home() {
   const [fid, setFid] = useState<number | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -125,6 +145,105 @@ export default function Home() {
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isNewBest, setIsNewBest] = useState(false);
 
+  // Challenge states
+  const [activeChallenge, setActiveChallenge] = useState<Challenge | null>(null);
+  const [challengeCount, setChallengeCount] = useState<number>(0);
+  const [showNewChallengePopup, setShowNewChallengePopup] = useState(false);
+  const [newChallengeTargetFid, setNewChallengeTargetFid] = useState<number | null>(null);
+  const [newChallengeTargetUsername, setNewChallengeTargetUsername] = useState<string | null>(null);
+  const [newChallengeTargetScore, setNewChallengeTargetScore] = useState<number | null>(null);
+  const [showChallengeResult, setShowChallengeResult] = useState(false);
+  const [completedChallenge, setCompletedChallenge] = useState<Challenge | null>(null);
+  const [lastGameScore, setLastGameScore] = useState<number | null>(null);
+
+  // Challenge URL parametresi kontrolü
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const challengeId = params.get("challenge");
+    if (challengeId && fid) {
+      fetchAndAcceptChallenge(challengeId);
+    }
+  }, [fid]);
+
+  // Incoming challenge sayısını fetch et
+  const fetchChallengeCount = useCallback(async () => {
+    if (!fid) {
+      setChallengeCount(0);
+      return;
+    }
+    try {
+      const res = await sdk.quickAuth.fetch("/api/challenge/list?filter=incoming");
+      if (res.ok) {
+        const data = await res.json();
+        setChallengeCount(data.challenges?.length || 0);
+      }
+    } catch (e) {
+      console.error("Failed to fetch challenge count:", e);
+    }
+  }, [fid]);
+
+  useEffect(() => {
+    if (fid) {
+      fetchChallengeCount();
+    }
+  }, [fid, fetchChallengeCount]);
+
+  const fetchAndAcceptChallenge = async (challengeId: string) => {
+    try {
+      const res = await sdk.quickAuth.fetch(`/api/challenge?id=${challengeId}`);
+      if (!res.ok) {
+        console.error("Challenge not found");
+        return;
+      }
+      const data = await res.json();
+      const challenge = data.challenge as Challenge;
+
+      // Kontroller
+      if (challenge.status === "completed") {
+        console.error("Challenge already completed");
+        return;
+      }
+      if (challenge.status === "expired") {
+        console.error("Challenge expired");
+        return;
+      }
+      if (challenge.creatorFid === fid) {
+        console.error("Cannot accept your own challenge");
+        return;
+      }
+      if (challenge.type === "direct" && challenge.targetFid !== fid) {
+        console.error("This challenge is not for you");
+        return;
+      }
+
+      // Challenge'ı kabul et ve oyuna başla
+      setActiveChallenge(challenge);
+      startChallengeGame(challenge);
+
+      // URL'den challenge parametresini kaldır
+      const url = new URL(window.location.href);
+      url.searchParams.delete("challenge");
+      window.history.replaceState({}, "", url.toString());
+    } catch (e) {
+      console.error("Failed to fetch challenge:", e);
+    }
+  };
+
+  const startChallengeGame = (challenge: Challenge) => {
+    setCurrentMode("practice");
+    setGameOver(false);
+    setScore(0);
+    setMergeCount(0);
+    setHighestLevel(1);
+    setScoreSaved(false);
+    setScoreSaveError(null);
+    setRemainingAttempts(null);
+    setIsNewBest(false);
+    setGameKey((k) => k + 1);
+    setScreen("challenge-game");
+  };
+
   useEffect(() => {
     async function init() {
       try {
@@ -132,6 +251,9 @@ export default function Home() {
 
         const maybeFid = context?.user?.fid;
         setFid(typeof maybeFid === "number" ? maybeFid : null);
+
+        const maybeUsername = context?.user?.username;
+        setUsername(typeof maybeUsername === "string" ? maybeUsername : null);
 
         setPlatform(detectPlatform(context));
 
@@ -190,6 +312,7 @@ export default function Home() {
       setScoreSaveError(null);
       setRemainingAttempts(null);
       setIsNewBest(false);
+      setLastGameScore(finalScore);
 
       const currentAddress = address || "0x0000000000000000000000000000000000000000";
 
@@ -197,6 +320,34 @@ export default function Home() {
       // For now we keep existing QuickAuth behavior.
       if (fid === null) {
         setScoreSaveError("Sign-in required to save score.");
+        return;
+      }
+
+      // Challenge game ise, challenge'ı tamamla
+      if (screen === "challenge-game" && activeChallenge) {
+        try {
+          const res = await sdk.quickAuth.fetch("/api/challenge", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              challengeId: activeChallenge.id,
+              score: finalScore,
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            setCompletedChallenge(data.challenge);
+            setShowChallengeResult(true);
+            setScoreSaved(true);
+          } else {
+            const data = await res.json();
+            setScoreSaveError(data.error || "Failed to complete challenge");
+          }
+        } catch (e) {
+          console.error("Challenge completion error:", e);
+          setScoreSaveError("Network error — challenge not completed");
+        }
         return;
       }
 
@@ -229,7 +380,7 @@ export default function Home() {
         setScoreSaveError("Network error — score not saved");
       }
     },
-    [fid, address, currentMode]
+    [fid, address, currentMode, screen, activeChallenge]
   );
 
   const handleCast = useCallback(async () => {
@@ -251,6 +402,130 @@ export default function Home() {
     }
   }, [score, highestLevel, platform]);
 
+  const handleChallengeFromGameOver = useCallback(() => {
+    if (score > 0) {
+      setNewChallengeTargetFid(null);
+      setNewChallengeTargetUsername(null);
+      setNewChallengeTargetScore(null);
+      setShowNewChallengePopup(true);
+    }
+  }, [score]);
+
+  const handleChallengeFromLeaderboard = useCallback((targetFid: number, targetUsername: string, targetScore: number) => {
+    setNewChallengeTargetFid(targetFid);
+    setNewChallengeTargetUsername(targetUsername);
+    setNewChallengeTargetScore(targetScore);
+    setShowNewChallengePopup(true);
+  }, []);
+
+  const handleCreateChallenge = useCallback(async (
+    type: "open" | "direct",
+    targetUsername: string | null,
+    useCurrentScore: boolean
+  ) => {
+    if (!fid || !username) return;
+
+    try {
+      const res = await sdk.quickAuth.fetch("/api/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          targetUsername,
+          score: useCurrentScore ? lastGameScore : null,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const challenge = data.challenge as Challenge;
+
+        // Cast ile paylaş
+        const miniappUrl =
+          process.env.NEXT_PUBLIC_MINIAPP_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "https://farbase-drop.vercel.app";
+
+        const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
+        const challengeUrl = `${miniappUrl}?challenge=${challenge.id}`;
+
+        let castText = "";
+        if (type === "direct" && targetUsername) {
+          if (challenge.creatorScore) {
+            castText = `⚔️ @${targetUsername}! I challenge you to beat my ${challenge.creatorScore} points on FarBase Drop!\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+          } else {
+            castText = `⚔️ @${targetUsername}! I challenge you to FarBase Drop!\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+          }
+        } else {
+          if (challenge.creatorScore) {
+            castText = `⚔️ Who can beat my ${challenge.creatorScore} points on FarBase Drop?\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+          } else {
+            castText = `⚔️ Who wants to challenge me on FarBase Drop?\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+          }
+        }
+
+        await sdk.actions.composeCast({ text: castText, embeds: [challengeUrl] });
+        setShowNewChallengePopup(false);
+        fetchChallengeCount();
+      } else {
+        const data = await res.json();
+        console.error("Failed to create challenge:", data.error);
+      }
+    } catch (e) {
+      console.error("Challenge creation error:", e);
+    }
+  }, [fid, username, lastGameScore, platform, fetchChallengeCount]);
+
+  const handleChallengeResultShare = useCallback(async () => {
+    if (!completedChallenge) return;
+
+    try {
+      const miniappUrl =
+        process.env.NEXT_PUBLIC_MINIAPP_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "https://farbase-drop.vercel.app";
+
+      const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
+
+      const isCreator = completedChallenge.creatorFid === fid;
+      const myScore = isCreator ? completedChallenge.creatorScore : completedChallenge.targetScore;
+      const opponentScore = isCreator ? completedChallenge.targetScore : completedChallenge.creatorScore;
+      const opponentUsername = isCreator ? completedChallenge.targetUsername : completedChallenge.creatorUsername;
+      const won = completedChallenge.winner === (isCreator ? "creator" : "target");
+
+      let castText = `⚔️ Challenge Result!\n`;
+      if (completedChallenge.winner === "tie") {
+        castText += `🤝 Tie with @${opponentUsername}!\n${myScore} vs ${opponentScore}\n`;
+      } else if (won) {
+        castText += `🏆 I beat @${opponentUsername}!\n${myScore} vs ${opponentScore}\n`;
+      } else {
+        castText += `😢 @${opponentUsername} beat me!\n${myScore} vs ${opponentScore}\n`;
+      }
+      castText += `\nPlay: ${miniappUrl}\nBy ${mention}`;
+
+      await sdk.actions.composeCast({ text: castText, embeds: [miniappUrl] });
+    } catch (e) {
+      console.error("Share result error:", e);
+    }
+  }, [completedChallenge, fid, platform]);
+
+  const handleRematch = useCallback(async () => {
+    if (!completedChallenge) return;
+
+    const isCreator = completedChallenge.creatorFid === fid;
+    const opponentUsername = isCreator ? completedChallenge.targetUsername : completedChallenge.creatorUsername;
+
+    if (opponentUsername) {
+      setNewChallengeTargetFid(null);
+      setNewChallengeTargetUsername(opponentUsername);
+      setNewChallengeTargetScore(null);
+      setShowChallengeResult(false);
+      setCompletedChallenge(null);
+      setActiveChallenge(null);
+      setShowNewChallengePopup(true);
+    }
+  }, [completedChallenge, fid]);
+
   const resetGameStateAndStart = useCallback((targetScreen: Screen) => {
     setGameOver(false);
     setScore(0);
@@ -267,6 +542,7 @@ export default function Home() {
   const startGame = useCallback(
     async (mode: "practice" | "tournament") => {
       setCurrentMode(mode);
+      setActiveChallenge(null);
 
       if (mode === "practice") {
         resetGameStateAndStart("practice");
@@ -282,7 +558,7 @@ export default function Home() {
       try {
         const res = await sdk.quickAuth.fetch("/api/remaining-attempts?mode=tournament");
         const data = (await res.json()) as AttemptsResponse;
-        hasAttempts = data.remaining > 0;
+        hasAttempts = typeof data.remaining === "number" && data.remaining > 0;
         setIsAdmin(!!data.isAdmin);
       } catch (e) {
         console.error("Failed to check tournament status:", e);
@@ -572,17 +848,54 @@ export default function Home() {
             if (fid === null) return;
             setScreen("leaderboard");
           }}
+          onChallenge={fid !== null ? () => setScreen("challenges") : undefined}
+          challengeCount={challengeCount}
           onAdmin={fid !== null ? () => setScreen("admin") : undefined}
         />
       )}
 
       {screen === "leaderboard" && fid !== null && (
-        <Leaderboard fid={fid} theme={theme} lang={lang} onBack={() => setScreen("menu")} />
+        <Leaderboard
+          fid={fid}
+          theme={theme}
+          lang={lang}
+          onBack={() => setScreen("menu")}
+          onChallenge={handleChallengeFromLeaderboard}
+        />
+      )}
+
+      {screen === "challenges" && fid !== null && (
+        <ChallengeList
+          fid={fid}
+          theme={theme}
+          lang={lang}
+          platform={platform}
+          onBack={() => {
+            setScreen("menu");
+            fetchChallengeCount();
+          }}
+          onNewChallenge={() => {
+            setNewChallengeTargetFid(null);
+            setNewChallengeTargetUsername(null);
+            setNewChallengeTargetScore(null);
+            setShowNewChallengePopup(true);
+          }}
+          onAcceptChallenge={(challenge: Challenge) => {
+            setActiveChallenge(challenge);
+            startChallengeGame(challenge);
+          }}
+          onRematch={(opponentUsername: string) => {
+            setNewChallengeTargetFid(null);
+            setNewChallengeTargetUsername(opponentUsername);
+            setNewChallengeTargetScore(null);
+            setShowNewChallengePopup(true);
+          }}
+        />
       )}
 
       {screen === "admin" && <AdminPanel onBack={() => setScreen("menu")} />}
 
-      {(screen === "practice" || screen === "tournament") && (
+      {(screen === "practice" || screen === "tournament" || screen === "challenge-game") && (
         <div
           style={{
             height: "100vh",
@@ -595,6 +908,26 @@ export default function Home() {
             alignItems: "center",
           }}
         >
+          {/* Challenge Banner */}
+          {screen === "challenge-game" && activeChallenge && !gameOver && (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 550,
+                background: "linear-gradient(135deg, #f97316, #fb923c)",
+                padding: "10px 16px",
+                textAlign: "center",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "0.85rem",
+              }}
+            >
+              ⚔️ {activeChallenge.creatorScore 
+                ? `Beat @${activeChallenge.creatorUsername}'s ${activeChallenge.creatorScore} pts!`
+                : `Challenge from @${activeChallenge.creatorUsername}`}
+            </div>
+          )}
+
           {!gameOver ? (
             <>
               <div style={{ flexShrink: 0, width: "100%", maxWidth: 550 }}>
@@ -619,7 +952,7 @@ export default function Home() {
               >
                 <GameCanvas
                   key={gameKey}
-                  mode={screen}
+                  mode={screen === "challenge-game" ? "practice" : screen}
                   gameStarted={true}
                   fid={fid ?? 0}
                   sessionId={`${fid ?? 0}-${gameKey}`}
@@ -630,6 +963,22 @@ export default function Home() {
                 />
               </div>
             </>
+          ) : showChallengeResult && completedChallenge ? (
+            <ChallengeResult
+              challenge={completedChallenge}
+              myFid={fid!}
+              theme={theme}
+              lang={lang}
+              onShare={handleChallengeResultShare}
+              onRematch={handleRematch}
+              onMenu={() => {
+                setShowChallengeResult(false);
+                setCompletedChallenge(null);
+                setActiveChallenge(null);
+                setScreen("menu");
+                fetchChallengeCount();
+              }}
+            />
           ) : (
             <GameOver
               score={score}
@@ -642,13 +991,30 @@ export default function Home() {
               remaining={remainingAttempts}
               isNewBest={isNewBest}
               onRestart={handleRestart}
-              onMenu={() => setScreen("menu")}
+              onMenu={() => {
+                setActiveChallenge(null);
+                setScreen("menu");
+              }}
               onCast={handleCast}
+              onChallenge={screen === "practice" ? handleChallengeFromGameOver : undefined}
               platform={platform}
               theme={theme}
             />
           )}
         </div>
+      )}
+
+      {/* New Challenge Popup */}
+      {showNewChallengePopup && (
+        <NewChallengePopup
+          theme={theme}
+          lang={lang}
+          platform={platform}
+          currentScore={lastGameScore}
+          defaultTargetUsername={newChallengeTargetUsername}
+          onClose={() => setShowNewChallengePopup(false)}
+          onCreate={handleCreateChallenge}
+        />
       )}
     </div>
   );
