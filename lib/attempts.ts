@@ -1,7 +1,7 @@
 import type { Redis } from "@upstash/redis";
 
-export const PRACTICE_LIMIT = 3;
-export const PRACTICE_LIMIT_ADMIN = 50;
+// Practice artık sınırsız - limit yok
+// Tournament değişmedi: her 1 USDC = 3 hak
 export const TOURNAMENT_ATTEMPTS_PER_ENTRY = 3;
 
 // ---- Key helpers ----
@@ -29,18 +29,6 @@ export function getWeekKey() {
   return `${y}-${m}-${d}`;
 }
 
-function getDayKey() {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(now.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function practiceKey(fid: number) {
-  return `attempts:practice:${getDayKey()}:${fid}`;
-}
-
 function tournamentPurchasedKey(fid: number) {
   const week = getWeekKey();
   return `attempts:tournament:${week}:${fid}:purchased`;
@@ -51,53 +39,33 @@ function tournamentUsedKey(fid: number) {
   return `attempts:tournament:${week}:${fid}:used`;
 }
 
-// ---- Practice (daily, 3 hak, admin 10) ----
+// ---- Practice (SINIRSIZ) ----
 
 export async function getPracticeRemaining(
-  redis: Redis,
-  fid: number,
-  admin: boolean
-) {
-  const limit = admin ? PRACTICE_LIMIT_ADMIN : PRACTICE_LIMIT;
-  const key = practiceKey(fid);
-  const used = (await redis.get<number>(key)) || 0;
-  return Math.max(0, limit - used);
+  _redis: Redis,
+  _fid: number,
+  _admin: boolean
+): Promise<number> {
+  // Practice artık sınırsız - her zaman yüksek bir değer döndür
+  // UI'da "∞" veya "Unlimited" olarak gösterilecek
+  return Infinity;
 }
 
 export async function consumePracticeAttempt(
-  redis: Redis,
-  fid: number,
-  admin: boolean
+  _redis: Redis,
+  _fid: number,
+  _admin: boolean
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const limit = admin ? PRACTICE_LIMIT_ADMIN : PRACTICE_LIMIT;
-  const key = practiceKey(fid);
-  const used = (await redis.get<number>(key)) || 0;
-
-  if (used >= limit) {
-    return { ok: false, error: "No practice attempts left. Resets at UTC midnight." };
-  }
-
-  await redis.set(key, used + 1);
+  // Practice sınırsız - her zaman izin ver
   return { ok: true };
 }
 
-export function getPracticeResetInSeconds(): number {
-  const now = new Date();
-  const nextMidnight = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + 1,
-      0,
-      0,
-      0,
-      0
-    )
-  );
-  return Math.max(0, Math.floor((nextMidnight.getTime() - now.getTime()) / 1000));
+export function getPracticeResetInSeconds(): number | null {
+  // Practice sınırsız - reset yok
+  return null;
 }
 
-// ---- Tournament (her 1 USDC = 3 hak, sinirsiz satin alma) ----
+// ---- Tournament (her 1 USDC = 3 hak, sınırsız satın alma) ----
 
 export async function getTournamentRemaining(
   redis: Redis,
@@ -135,14 +103,14 @@ export async function createTournamentEntry(
   await redis.set(pKey, purchased + TOURNAMENT_ATTEMPTS_PER_ENTRY);
 }
 
-// ---- Generic wrappers (save-score route icin) ----
+// ---- Generic wrappers (save-score route için) ----
 
 export async function getRemainingAttempts(
   redis: Redis,
   mode: "practice" | "tournament",
   fid: number,
   admin: boolean
-) {
+): Promise<number> {
   if (mode === "practice") {
     return getPracticeRemaining(redis, fid, admin);
   }
@@ -166,7 +134,7 @@ export async function getResetInSeconds(
   _redis: Redis,
   mode: "practice" | "tournament",
   _fid: number
-) {
+): Promise<number | null> {
   if (mode === "practice") {
     return getPracticeResetInSeconds();
   }
