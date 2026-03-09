@@ -16,13 +16,15 @@ interface MainMenuProps {
   onPractice: () => void;
   onTournament: () => void;
   onLeaderboard: () => void;
+  onChallenge?: () => void;
+  challengeCount?: number;
   onAdmin?: () => void;
 }
 
 type AttemptsResponse = {
   mode: 'practice' | 'tournament';
-  remaining: number;
-  limit: number;
+  remaining: number | null;
+  limit: number | null;
   isAdmin: boolean;
   resetAt: number | null;
   resetInSeconds: number | null;
@@ -63,13 +65,13 @@ export default function MainMenu({
   onPractice,
   onTournament,
   onLeaderboard,
+  onChallenge,
+  challengeCount,
   onAdmin,
 }: MainMenuProps) {
   const [prizePool, setPrizePool] = useState<string>('0');
   const [recommendedApps, setRecommendedApps] = useState<any[]>([]);
-  const [practiceAttempts, setPracticeAttempts] = useState<number>(3);
   const [tournamentAttempts, setTournamentAttempts] = useState<number>(0);
-  const [practiceResetIn, setPracticeResetIn] = useState<number | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
@@ -119,9 +121,7 @@ export default function MainMenu({
 
     async function fetchAttempts() {
       if (!fid) {
-        setPracticeAttempts(3);
         setTournamentAttempts(0);
-        setPracticeResetIn(null);
         setIsAdmin(false);
         return;
       }
@@ -130,10 +130,6 @@ export default function MainMenu({
         const practiceRes = await fetchWithQuickAuth(fid, '/api/remaining-attempts?mode=practice');
         if (practiceRes.ok) {
           const practiceData = (await practiceRes.json()) as AttemptsResponse;
-          setPracticeAttempts(typeof practiceData.remaining === 'number' ? practiceData.remaining : 3);
-          setPracticeResetIn(
-            typeof practiceData.resetInSeconds === 'number' ? practiceData.resetInSeconds : null
-          );
           setIsAdmin(!!practiceData.isAdmin);
         }
 
@@ -155,7 +151,11 @@ export default function MainMenu({
     fetchAttempts();
   }, [fid, platform]);
 
-  const practiceClickable = isAdmin || practiceAttempts > 0;
+  // Practice artık sınırsız - her zaman tıklanabilir
+  const practiceClickable = true;
+
+  // Sponsor DM linki - platform bazlı
+  const sponsorUsername = platform === 'base' ? '@bluexir.farcaster.eth' : '@bluexir';
 
   return (
     <div
@@ -297,6 +297,7 @@ export default function MainMenu({
             gap: '16px',
           }}
         >
+          {/* Practice Card - Sınırsız */}
           <div
             onClick={practiceClickable ? onPractice : undefined}
             style={{
@@ -331,28 +332,24 @@ export default function MainMenu({
               <span style={{ fontSize: '1rem', fontWeight: 900, color: '#00f3ff' }}>{t(lang, 'menu.practice')}</span>
               <span
                 style={{
-                  background: practiceClickable ? '#fff' : '#555',
-                  color: practiceClickable ? '#000' : '#999',
+                  background: '#fff',
+                  color: '#000',
                   fontSize: '0.7rem',
                   fontWeight: 900,
                   padding: '2px 8px',
                   borderRadius: '12px',
                 }}
               >
-                {isAdmin ? t(lang, 'menu.unlimited') : practiceAttempts + '/3'}
+                {t(lang, 'menu.practiceUnlimitedShort')}
               </span>
             </div>
 
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
-              {isAdmin
-                ? 'Admin test - Unlimited attempts'
-                : practiceAttempts > 0
-                ? 'Daily free attempts - No rewards'
-                : 'No attempts left - Resets in ' +
-                  (practiceResetIn ? formatCountdown(practiceResetIn) : 'soon')}
+              {t(lang, 'menu.practiceUnlimited')}
             </p>
           </div>
 
+          {/* Tournament Card */}
           <div
             onClick={() => {
               if (!fid) return;
@@ -404,11 +401,71 @@ export default function MainMenu({
             </div>
             <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
               {fid
-                ? '1 USDC entry - Top 5 win - 3 attempts per entry'
-                : 'Sign-in required for Tournament'}
+                ? t(lang, 'menu.tournamentTeaser')
+                : t(lang, 'menu.signInRequiredTournament')}
             </p>
           </div>
 
+          {/* Challenge Card */}
+          {onChallenge && (
+            <div
+              onClick={() => {
+                if (!fid) return;
+                onChallenge();
+              }}
+              style={{
+                background: colors.cardBg,
+                backdropFilter: 'blur(12px)',
+                border: '1px solid #f97316',
+                borderRadius: '16px',
+                padding: '18px',
+                cursor: fid ? 'pointer' : 'not-allowed',
+                opacity: fid ? 1 : 0.6,
+                transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!fid) return;
+                e.currentTarget.style.boxShadow = '0 0 20px rgba(249,115,22,0.3)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '8px',
+                }}
+              >
+                <span style={{ fontSize: '1rem', fontWeight: 900, color: '#f97316' }}>
+                  ⚔️ {t(lang, 'menu.challenges')}
+                </span>
+                {typeof challengeCount === 'number' && challengeCount > 0 && (
+                  <span
+                    style={{
+                      background: '#f97316',
+                      color: '#fff',
+                      fontSize: '0.7rem',
+                      fontWeight: 900,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                    }}
+                  >
+                    {challengeCount}
+                  </span>
+                )}
+              </div>
+              <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0 }}>
+                {fid ? t(lang, 'menu.challengesDesc') : t(lang, 'menu.signInRequiredChallenge')}
+              </p>
+            </div>
+          )}
+
+          {/* Leaderboard Card */}
           <div
             onClick={() => {
               if (!fid) return;
@@ -442,6 +499,7 @@ export default function MainMenu({
             </p>
           </div>
 
+          {/* Prize Pool Card */}
           <div
             style={{
               background: 'rgba(255,255,255,0.05)',
@@ -479,11 +537,38 @@ export default function MainMenu({
               {'$' + prizePool + ' USDC'}
             </div>
 
-            <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0 }}>
+            <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0, marginBottom: '8px' }}>
               Weekly distribution - Top 5 winners
+            </p>
+
+            {/* Prize Distribution */}
+            <p style={{ color: '#eab308', fontSize: '0.7rem', margin: 0, fontWeight: 600 }}>
+              {t(lang, 'menu.prizeDistribution')}
             </p>
           </div>
 
+          {/* Sponsor Banner */}
+          <div
+            style={{
+              background: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.08)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(59,130,246,0.5)',
+              borderRadius: '16px',
+              padding: '16px 18px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ marginBottom: '6px' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#3b82f6' }}>
+                💼 {t(lang, 'menu.sponsorTitle')}
+              </span>
+            </div>
+            <p style={{ color: colors.textMuted, fontSize: '0.75rem', margin: 0 }}>
+              {t(lang, 'menu.sponsorCta')} <span style={{ color: '#3b82f6', fontWeight: 700 }}>{sponsorUsername}</span>
+            </p>
+          </div>
+
+          {/* Recommended Apps */}
           {recommendedApps.length > 0 && (
             <div
               style={{
