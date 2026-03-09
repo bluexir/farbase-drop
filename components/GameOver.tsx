@@ -18,6 +18,7 @@ interface GameOverProps {
   onRestart: () => void;
   onMenu?: () => void;
   onCast: () => void | Promise<void>;
+  onChallenge?: () => void | Promise<void>;
 
   // ✅ New: platform-aware coin labels/icons
   platform?: Platform;
@@ -38,6 +39,7 @@ export default function GameOver({
   onRestart,
   onMenu,
   onCast,
+  onChallenge,
   platform = "farcaster",
   theme = "dark",
 }: GameOverProps) {
@@ -51,7 +53,11 @@ export default function GameOver({
       ? mergeCount
       : 0;
 
-  const canPlayAgain = remaining === null || remaining === undefined || remaining > 0;
+  // Practice artık sınırsız - her zaman tekrar oynanabilir
+  const canPlayAgain = mode === "practice" || remaining === null || remaining === undefined || remaining > 0;
+
+  // Challenge butonu sadece practice modda ve skor varsa görünür
+  const showChallengeButton = mode === "practice" && score > 0 && onChallenge;
 
   return (
     <div className={`absolute inset-0 ${isDark ? 'bg-black bg-opacity-80' : 'bg-white bg-opacity-90'} flex flex-col items-center justify-center z-10 rounded-xl px-6`}>
@@ -75,23 +81,23 @@ export default function GameOver({
             textAlign: "center",
           }}
         >
-          {lang === 'tr' ? '🏅 Yeni Kişisel Rekor!' : '🏅 New Personal Best!'}
+          {t(lang, 'gameover.newPersonalBest')}
         </p>
       )}
 
       <div className="w-full bg-gray-800 rounded-lg p-4 mb-4 space-y-3 max-w-md">
         <div className="flex justify-between">
-          <span className="text-gray-400">{lang === 'tr' ? 'Puan' : 'Score'}</span>
+          <span className="text-gray-400">{t(lang, 'gameover.score')}</span>
           <span className="text-yellow-400 font-bold text-lg">{score}</span>
         </div>
 
         <div className="flex justify-between">
-          <span className="text-gray-400">{lang === 'tr' ? 'Birleşme' : 'Merges'}</span>
+          <span className="text-gray-400">{t(lang, 'gameover.merges')}</span>
           <span className="text-white font-bold text-lg">{mergesValue}</span>
         </div>
 
         <div className="flex justify-between items-center">
-          <span className="text-gray-400">{lang === 'tr' ? 'En İyi Coin' : 'Best Coin'}</span>
+          <span className="text-gray-400">{t(lang, 'gameover.bestCoin')}</span>
           <div className="flex items-center gap-2">
             <div
               className="w-6 h-6 rounded-full"
@@ -113,14 +119,14 @@ export default function GameOver({
         }}
       >
         {scoreSaved
-          ? "✓ {lang === 'tr' ? 'Skor kaydedildi' : 'Score saved'}"
+          ? `✓ ${t(lang, 'gameover.scoreSaved')}`
           : scoreSaveError
           ? `✗ ${scoreSaveError}`
           : "Saving score..."}
       </p>
 
-      {/* Kalan hak */}
-      {typeof remaining === "number" && (
+      {/* Kalan hak - sadece tournament modda göster */}
+      {mode === "tournament" && typeof remaining === "number" && (
         <p
           style={{
             fontSize: "0.7rem",
@@ -129,10 +135,8 @@ export default function GameOver({
           }}
         >
           {remaining > 0
-            ? `${remaining} attempt${remaining !== 1 ? "s" : ""} remaining`
-            : mode === "practice"
-            ? "No attempts left today — resets at UTC midnight"
-            : "No attempts left — buy a new entry to continue"}
+            ? t(lang, 'gameover.attemptsRemaining', { count: remaining })
+            : t(lang, 'gameover.noAttemptsBuy')}
         </p>
       )}
 
@@ -156,6 +160,28 @@ export default function GameOver({
         {lang === 'tr' ? '🗣️ Skoru Paylaş' : '🗣️ Cast Score'}
       </button>
 
+      {/* Challenge a Friend - sadece practice modda */}
+      {showChallengeButton && (
+        <button
+          onClick={() => void onChallenge()}
+          style={{
+            width: "100%",
+            maxWidth: "420px",
+            background: "linear-gradient(135deg, #f97316, #fb923c)",
+            border: "none",
+            borderRadius: "10px",
+            padding: "12px",
+            color: "#fff",
+            fontSize: "0.95rem",
+            fontWeight: "bold",
+            cursor: "pointer",
+            marginBottom: "10px",
+          }}
+        >
+          ⚔️ {t(lang, 'gameover.challengeFriend')}
+        </button>
+      )}
+
       {/* Play Again */}
       <button
         onClick={canPlayAgain ? onRestart : undefined}
@@ -173,7 +199,7 @@ export default function GameOver({
           marginBottom: onMenu ? "10px" : "0px",
         }}
       >
-        {canPlayAgain ? "Play Again" : "No Attempts Left"}
+        {canPlayAgain ? t(lang, 'gameover.playAgain') : "No Attempts Left"}
       </button>
 
       {/* Menu */}
@@ -183,11 +209,11 @@ export default function GameOver({
           style={{
             width: "100%",
             maxWidth: "420px",
-            background: "#111827",
-            border: "1px solid #374151",
+            background: isDark ? "#111827" : "#e5e7eb",
+            border: isDark ? "1px solid #374151" : "1px solid #d1d5db",
             borderRadius: "10px",
             padding: "12px",
-            color: "#fff",
+            color: isDark ? "#fff" : "#1f2937",
             fontSize: "0.95rem",
             fontWeight: "bold",
             cursor: "pointer",
