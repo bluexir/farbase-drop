@@ -9,54 +9,15 @@ interface HowToPlayProps {
   onClose: () => void;
 }
 
-const rulesByLang: Record<Lang, { icon: string; title: string; text: string }[]> = {
-  en: [
-    {
-      icon: "🪙",
-      title: "Merge Coins",
-      text: "Drop coins into the container. When two same-level coins touch, they merge into a higher-level coin.",
-    },
-    {
-      icon: "📈",
-      title: "Score Points",
-      text: "Each merge earns points based on the new coin's level. Higher merges = more points. Total score determines rank.",
-    },
-    {
-      icon: "🎮",
-      title: "Play Modes",
-      text: "Practice is free. Tournament costs 1 USDC per entry and gives 3 attempts. Top players win from the prize pool.",
-    },
-    {
-      icon: "⚡",
-      title: "Be Fast",
-      text: "You have limited time. Plan your drops to avoid filling the container and aim for high-level merges.",
-    },
-  ],
-  tr: [
-    {
-      icon: "🪙",
-      title: "Coin Birleştir",
-      text: "Coin'leri kaba bırak. Aynı seviyedeki iki coin temas edince daha yüksek seviyeye birleşir.",
-    },
-    {
-      icon: "📈",
-      title: "Puan Kazan",
-      text: "Her birleşme, oluşan yeni coin seviyesine göre puan verir. Seviye yükseldikçe puan artar. Toplam puan sıralamayı belirler.",
-    },
-    {
-      icon: "🎮",
-      title: "Oyun Modları",
-      text: "Pratik ücretsizdir. Turnuva giriş ücreti 1 USDC’dir ve giriş başına 3 deneme verir. En iyi oyuncular ödül havuzundan kazanır.",
-    },
-    {
-      icon: "⚡",
-      title: "Hızlı Ol",
-      text: "Süren sınırlı. Kabı doldurmadan planlı bırak, yüksek seviye birleşmelere odaklan.",
-    },
-  ],
-};
-
-const rules = rulesByLang;
+// 6 kural - ikonlar sabit, başlık ve text i18n'den gelecek
+const ruleKeys = [
+  { icon: "🪙", titleKey: "howto.rule1Title", textKey: "howto.rule1Text" },
+  { icon: "📈", titleKey: "howto.rule2Title", textKey: "howto.rule2Text" },
+  { icon: "⚠️", titleKey: "howto.rule3Title", textKey: "howto.rule3Text" },
+  { icon: "🆓", titleKey: "howto.rule4Title", textKey: "howto.rule4Text" },
+  { icon: "🏆", titleKey: "howto.rule5Title", textKey: "howto.rule5Text" },
+  { icon: "💰", titleKey: "howto.rule6Title", textKey: "howto.rule6Text" },
+];
 
 export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
   const isDark = theme === 'dark';
@@ -109,7 +70,7 @@ export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
               fontWeight: 900,
             }}
           >
-            How to Play
+            {t(lang, "howto.title")}
           </h2>
 
           <button
@@ -125,12 +86,12 @@ export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
               fontSize: "0.8rem",
             }}
           >
-            Close
+            {t(lang, "common.close")}
           </button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {rules[lang].map((r, i) => (
+          {ruleKeys.map((rule, i) => (
             <div
               key={i}
               style={{
@@ -143,7 +104,7 @@ export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
                 padding: "12px",
               }}
             >
-              <div style={{ fontSize: "1.3rem", lineHeight: 1 }}>{r.icon}</div>
+              <div style={{ fontSize: "1.3rem", lineHeight: 1 }}>{rule.icon}</div>
               <div style={{ flex: 1 }}>
                 <div
                   style={{
@@ -153,10 +114,10 @@ export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
                     marginBottom: "2px",
                   }}
                 >
-                  {r.title}
+                  {t(lang, rule.titleKey)}
                 </div>
                 <div style={{ color: isDark ? "#aaa" : "#666", fontSize: "0.78rem" }}>
-                  {r.text}
+                  {t(lang, rule.textKey)}
                 </div>
               </div>
             </div>
@@ -164,8 +125,7 @@ export default function HowToPlay({ theme, lang, onClose }: HowToPlayProps) {
         </div>
 
         <div style={{ marginTop: "14px", color: isDark ? "#777" : "#888", fontSize: "0.72rem" }}>
-          Tip: Focus on building space and planning merges — rushing fills the
-          container fast.
+          {t(lang, "howto.tip")}
         </div>
       </div>
     </div>
