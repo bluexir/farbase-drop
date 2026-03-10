@@ -386,15 +386,14 @@ export default function Home() {
   const handleCast = useCallback(async () => {
     try {
       const coinData = getCoinByLevel(highestLevel, platform);
-      const miniappUrl =
-        process.env.NEXT_PUBLIC_MINIAPP_URL ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        "https://farbase-drop.vercel.app";
+      const miniappUrl = platform === "base"
+        ? "https://base.app/app/farbase-drop.vercel.app"
+        : "https://farcaster.xyz/miniapps/cho2c_l-CEGb/farbase-drop";
 
       const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
       const text = `I just scored ${score} points on FarBase Drop! Highest coin: ${
         coinData?.symbol || "?"
-      }\n\nPlay now: ${miniappUrl}\n\nBy ${mention}`;
+      }\n\nBy ${mention}`;
 
       await sdk.actions.composeCast({ text, embeds: [miniappUrl] });
     } catch (e) {
@@ -440,27 +439,27 @@ export default function Home() {
         const data = await res.json();
         const challenge = data.challenge as Challenge;
 
-        // Cast ile paylaş
-        const miniappUrl =
-          process.env.NEXT_PUBLIC_MINIAPP_URL ||
-          process.env.NEXT_PUBLIC_APP_URL ||
-          "https://farbase-drop.vercel.app";
+        // Cast ile paylaş - platform bazlı mini app URL
+        const baseAppUrl = "https://farbase-drop.vercel.app";
+        const miniappUrl = platform === "base"
+          ? "https://base.app/app/farbase-drop.vercel.app"
+          : "https://farcaster.xyz/miniapps/cho2c_l-CEGb/farbase-drop";
+        const challengeUrl = `${baseAppUrl}?challenge=${challenge.id}`;
 
         const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
-        const challengeUrl = `${miniappUrl}?challenge=${challenge.id}`;
 
         let castText = "";
         if (type === "direct" && targetUsername) {
           if (challenge.creatorScore) {
-            castText = `⚔️ @${targetUsername}! I challenge you to beat my ${challenge.creatorScore} points on FarBase Drop!\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+            castText = `⚔️ @${targetUsername}! I challenge you to beat my ${challenge.creatorScore} points on FarBase Drop!\n\nBy ${mention}`;
           } else {
-            castText = `⚔️ @${targetUsername}! I challenge you to FarBase Drop!\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+            castText = `⚔️ @${targetUsername}! I challenge you to FarBase Drop!\n\nBy ${mention}`;
           }
         } else {
           if (challenge.creatorScore) {
-            castText = `⚔️ Who can beat my ${challenge.creatorScore} points on FarBase Drop?\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+            castText = `⚔️ Who can beat my ${challenge.creatorScore} points on FarBase Drop?\n\nBy ${mention}`;
           } else {
-            castText = `⚔️ Who wants to challenge me on FarBase Drop?\n\nAccept: ${challengeUrl}\n\nBy ${mention}`;
+            castText = `⚔️ Who wants to challenge me on FarBase Drop?\n\nBy ${mention}`;
           }
         }
 
@@ -480,10 +479,9 @@ export default function Home() {
     if (!completedChallenge) return;
 
     try {
-      const miniappUrl =
-        process.env.NEXT_PUBLIC_MINIAPP_URL ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        "https://farbase-drop.vercel.app";
+      const miniappUrl = platform === "base"
+        ? "https://base.app/app/farbase-drop.vercel.app"
+        : "https://farcaster.xyz/miniapps/cho2c_l-CEGb/farbase-drop";
 
       const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
 
@@ -501,7 +499,7 @@ export default function Home() {
       } else {
         castText += `😢 @${opponentUsername} beat me!\n${myScore} vs ${opponentScore}\n`;
       }
-      castText += `\nPlay: ${miniappUrl}\nBy ${mention}`;
+      castText += `\nBy ${mention}`;
 
       await sdk.actions.composeCast({ text: castText, embeds: [miniappUrl] });
     } catch (e) {
