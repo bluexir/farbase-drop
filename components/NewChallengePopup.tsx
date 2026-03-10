@@ -9,20 +9,18 @@ interface NewChallengePopupProps {
   theme: Theme;
   lang: Lang;
   platform: Platform;
-  currentScore: number | null;
   defaultTargetUsername: string | null;
   onClose: () => void;
-  onCreate: (type: "open" | "direct", targetUsername: string | null, useCurrentScore: boolean) => void;
+  onStartGame: (type: "open" | "direct", targetUsername: string | null) => void;
 }
 
 export default function NewChallengePopup({
   theme,
   lang,
   platform,
-  currentScore,
   defaultTargetUsername,
   onClose,
-  onCreate,
+  onStartGame,
 }: NewChallengePopupProps) {
   const [challengeType, setChallengeType] = useState<"open" | "direct">(
     defaultTargetUsername ? "direct" : "open"
@@ -30,7 +28,6 @@ export default function NewChallengePopup({
   const [targetUsername, setTargetUsername] = useState(
     defaultTargetUsername ? defaultTargetUsername.replace(/^@/, "") : ""
   );
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -39,22 +36,15 @@ export default function NewChallengePopup({
     ? t(lang, "challenge.searchOnBase")
     : t(lang, "challenge.searchOnFarcaster");
 
-  const handleCreate = async () => {
+  const handleStartGame = () => {
     if (challengeType === "direct" && !targetUsername.trim()) {
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      // Her zaman mevcut skoru kullan (currentScore !== null ise)
-      await onCreate(
-        challengeType,
-        challengeType === "direct" ? targetUsername.trim() : null,
-        currentScore !== null
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+    onStartGame(
+      challengeType,
+      challengeType === "direct" ? targetUsername.trim() : null
+    );
   };
 
   return (
@@ -121,40 +111,28 @@ export default function NewChallengePopup({
           </button>
         </div>
 
-        {/* Current Score Display */}
-        {currentScore !== null && (
-          <div
+        {/* Info Banner */}
+        <div
+          style={{
+            background: isDark ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.08)",
+            border: "1px solid rgba(249,115,22,0.3)",
+            borderRadius: "12px",
+            padding: "14px 16px",
+            marginBottom: "18px",
+            textAlign: "center",
+          }}
+        >
+          <p
             style={{
-              background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(34,197,94,0.05))",
-              border: "1px solid rgba(34,197,94,0.3)",
-              borderRadius: "12px",
-              padding: "14px 16px",
-              marginBottom: "18px",
-              textAlign: "center",
+              margin: 0,
+              fontSize: "0.8rem",
+              color: isDark ? "#fb923c" : "#ea580c",
+              fontWeight: 600,
             }}
           >
-            <p
-              style={{
-                margin: 0,
-                fontSize: "0.75rem",
-                color: isDark ? "#888" : "#666",
-                marginBottom: "4px",
-              }}
-            >
-              {t(lang, "challenge.yourScore")}
-            </p>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "1.4rem",
-                fontWeight: 900,
-                color: "#22c55e",
-              }}
-            >
-              {currentScore} pts
-            </p>
-          </div>
-        )}
+            🎮 {lang === "tr" ? "Oyunu oyna, skorunla meydan oku!" : "Play the game, challenge with your score!"}
+          </p>
+        </div>
 
         {/* Challenge Type */}
         <div style={{ marginBottom: "18px" }}>
@@ -283,14 +261,14 @@ export default function NewChallengePopup({
           </div>
         )}
 
-        {/* Create Button */}
+        {/* Start Game Button */}
         <button
-          onClick={handleCreate}
-          disabled={isSubmitting || (challengeType === "direct" && !targetUsername.trim())}
+          onClick={handleStartGame}
+          disabled={challengeType === "direct" && !targetUsername.trim()}
           style={{
             width: "100%",
             background:
-              isSubmitting || (challengeType === "direct" && !targetUsername.trim())
+              challengeType === "direct" && !targetUsername.trim()
                 ? "#555"
                 : "linear-gradient(135deg, #f97316, #fb923c)",
             border: "none",
@@ -300,13 +278,13 @@ export default function NewChallengePopup({
             fontSize: "0.95rem",
             fontWeight: 700,
             cursor:
-              isSubmitting || (challengeType === "direct" && !targetUsername.trim())
+              challengeType === "direct" && !targetUsername.trim()
                 ? "not-allowed"
                 : "pointer",
             marginBottom: "10px",
           }}
         >
-          {isSubmitting ? "..." : `⚔️ ${t(lang, "challenge.create")}`}
+          🎮 {t(lang, "challenge.startGame")}
         </button>
 
         {/* Cancel Button */}
