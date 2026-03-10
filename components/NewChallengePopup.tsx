@@ -27,11 +27,17 @@ export default function NewChallengePopup({
   const [challengeType, setChallengeType] = useState<"open" | "direct">(
     defaultTargetUsername ? "direct" : "open"
   );
-  const [targetUsername, setTargetUsername] = useState(defaultTargetUsername || "");
-  const [useScore, setUseScore] = useState(currentScore !== null);
+  const [targetUsername, setTargetUsername] = useState(
+    defaultTargetUsername ? defaultTargetUsername.replace(/^@/, "") : ""
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isDark = theme === "dark";
+
+  // Platform bazlı placeholder
+  const searchPlaceholder = platform === "base"
+    ? t(lang, "challenge.searchOnBase")
+    : t(lang, "challenge.searchOnFarcaster");
 
   const handleCreate = async () => {
     if (challengeType === "direct" && !targetUsername.trim()) {
@@ -40,10 +46,11 @@ export default function NewChallengePopup({
 
     setIsSubmitting(true);
     try {
+      // Her zaman mevcut skoru kullan (currentScore !== null ise)
       await onCreate(
         challengeType,
         challengeType === "direct" ? targetUsername.trim() : null,
-        useScore && currentScore !== null
+        currentScore !== null
       );
     } finally {
       setIsSubmitting(false);
@@ -113,6 +120,41 @@ export default function NewChallengePopup({
             {t(lang, "common.close")}
           </button>
         </div>
+
+        {/* Current Score Display */}
+        {currentScore !== null && (
+          <div
+            style={{
+              background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(34,197,94,0.05))",
+              border: "1px solid rgba(34,197,94,0.3)",
+              borderRadius: "12px",
+              padding: "14px 16px",
+              marginBottom: "18px",
+              textAlign: "center",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: "0.75rem",
+                color: isDark ? "#888" : "#666",
+                marginBottom: "4px",
+              }}
+            >
+              {t(lang, "challenge.yourScore")}
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "1.4rem",
+                fontWeight: 900,
+                color: "#22c55e",
+              }}
+            >
+              {currentScore} pts
+            </p>
+          </div>
+        )}
 
         {/* Challenge Type */}
         <div style={{ marginBottom: "18px" }}>
@@ -200,86 +242,43 @@ export default function NewChallengePopup({
             >
               {t(lang, "challenge.challengeWho")}
             </p>
-            <input
-              type="text"
-              value={targetUsername}
-              onChange={(e) => setTargetUsername(e.target.value)}
-              placeholder={t(lang, "challenge.enterUsername")}
+            <div
               style={{
-                width: "100%",
+                display: "flex",
+                alignItems: "center",
                 background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
                 border: `1px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`,
                 borderRadius: "10px",
-                padding: "12px 14px",
-                color: isDark ? "#fff" : "#1a1a1a",
-                fontSize: "0.9rem",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-        )}
-
-        {/* Score Option */}
-        {currentScore !== null && (
-          <div style={{ marginBottom: "20px" }}>
-            <p
-              style={{
-                margin: "0 0 10px 0",
-                fontSize: "0.85rem",
-                fontWeight: 700,
-                color: isDark ? "#fff" : "#1a1a1a",
+                overflow: "hidden",
               }}
             >
-              {t(lang, "challenge.yourScore")}
-            </p>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={() => setUseScore(true)}
+              {/* @ Prefix */}
+              <span
                 style={{
-                  flex: 1,
-                  background: useScore
-                    ? "linear-gradient(135deg, #22c55e, #4ade80)"
-                    : isDark
-                    ? "rgba(255,255,255,0.05)"
-                    : "rgba(0,0,0,0.03)",
-                  border: useScore
-                    ? "none"
-                    : `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
-                  borderRadius: "10px",
-                  padding: "12px 10px",
-                  color: useScore ? "#fff" : isDark ? "#888" : "#666",
-                  fontSize: "0.8rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "center",
+                  padding: "12px 0 12px 14px",
+                  color: "#f97316",
+                  fontSize: "0.9rem",
+                  fontWeight: 700,
                 }}
               >
-                {currentScore} pts
-              </button>
-              <button
-                onClick={() => setUseScore(false)}
+                @
+              </span>
+              {/* Input */}
+              <input
+                type="text"
+                value={targetUsername}
+                onChange={(e) => setTargetUsername(e.target.value.replace(/^@/, ""))}
+                placeholder={searchPlaceholder}
                 style={{
                   flex: 1,
-                  background: !useScore
-                    ? "linear-gradient(135deg, #3b82f6, #60a5fa)"
-                    : isDark
-                    ? "rgba(255,255,255,0.05)"
-                    : "rgba(0,0,0,0.03)",
-                  border: !useScore
-                    ? "none"
-                    : `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
-                  borderRadius: "10px",
-                  padding: "12px 10px",
-                  color: !useScore ? "#fff" : isDark ? "#888" : "#666",
-                  fontSize: "0.8rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "center",
+                  background: "transparent",
+                  border: "none",
+                  padding: "12px 14px 12px 4px",
+                  color: isDark ? "#fff" : "#1a1a1a",
+                  fontSize: "0.9rem",
+                  outline: "none",
                 }}
-              >
-                {t(lang, "challenge.noScore")}
-              </button>
+              />
             </div>
           </div>
         )}
