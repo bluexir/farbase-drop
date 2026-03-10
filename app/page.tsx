@@ -52,11 +52,15 @@ type Challenge = {
   completedAt: number | null;
 };
 
+type PendingChallengeData = {
+  type: "open" | "direct";
+  targetUsername: string | null;
+};
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// UTC Monday 00:00 week key (same idea as leaderboard)
 function getWeekKeyUTC() {
   const now = new Date();
   const utc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
@@ -79,7 +83,6 @@ function genPurchaseId() {
 }
 
 function detectPlatform(context: any): Platform {
-  // Base App'in resmi clientFid'si: 309857
   if (context?.client?.clientFid === 309857) {
     return "base";
   }
@@ -118,7 +121,6 @@ export default function Home() {
   const [lang, setLang] = useState<Lang>("en");
 
   useEffect(() => {
-    // Language: persisted user choice, otherwise device default
     try {
       const saved = localStorage.getItem("farbase_lang");
       if (saved === "en" || saved === "tr") {
@@ -147,14 +149,12 @@ export default function Home() {
 
   // Challenge states
   const [activeChallenge, setActiveChallenge] = useState<Challenge | null>(null);
+  const [pendingChallengeData, setPendingChallengeData] = useState<PendingChallengeData | null>(null);
   const [challengeCount, setChallengeCount] = useState<number>(0);
   const [showNewChallengePopup, setShowNewChallengePopup] = useState(false);
-  const [newChallengeTargetFid, setNewChallengeTargetFid] = useState<number | null>(null);
   const [newChallengeTargetUsername, setNewChallengeTargetUsername] = useState<string | null>(null);
-  const [newChallengeTargetScore, setNewChallengeTargetScore] = useState<number | null>(null);
   const [showChallengeResult, setShowChallengeResult] = useState(false);
   const [completedChallenge, setCompletedChallenge] = useState<Challenge | null>(null);
-  const [lastGameScore, setLastGameScore] = useState<number | null>(null);
 
   // Challenge URL parametresi kontrolü
   useEffect(() => {
@@ -166,7 +166,6 @@ export default function Home() {
     }
   }, [fid]);
 
-  // Incoming challenge sayısını fetch et
   const fetchChallengeCount = useCallback(async () => {
     if (!fid) {
       setChallengeCount(0);
@@ -199,7 +198,6 @@ export default function Home() {
       const data = await res.json();
       const challenge = data.challenge as Challenge;
 
-      // Kontroller
       if (challenge.status === "completed") {
         console.error("Challenge already completed");
         return;
@@ -217,11 +215,9 @@ export default function Home() {
         return;
       }
 
-      // Challenge'ı kabul et ve oyuna başla
       setActiveChallenge(challenge);
-      startChallengeGame(challenge);
+      startChallengeGame();
 
-      // URL'den challenge parametresini kaldır
       const url = new URL(window.location.href);
       url.searchParams.delete("challenge");
       window.history.replaceState({}, "", url.toString());
@@ -230,7 +226,7 @@ export default function Home() {
     }
   };
 
-  const startChallengeGame = (challenge: Challenge) => {
+  const startChallengeGame = () => {
     setCurrentMode("practice");
     setGameOver(false);
     setScore(0);
@@ -257,7 +253,6 @@ export default function Home() {
 
         setPlatform(detectPlatform(context));
 
-        // Notification token'ı kaydet (mevcut kullanıcılar için)
         const notifDetails = context?.client?.notificationDetails;
         if (maybeFid && notifDetails?.url && notifDetails?.token) {
           try {
@@ -290,7 +285,6 @@ export default function Home() {
   }, []);
 
   const handleMerge = useCallback((fromLevel: number, toLevel: number) => {
-    // scoring logic unchanged
     const coinData = getCoinByLevel(toLevel);
     const increment = coinData?.score || 0;
     setScore((prev) => prev + increment);
@@ -312,19 +306,62 @@ export default function Home() {
       setScoreSaveError(null);
       setRemainingAttempts(null);
       setIsNewBest(false);
-      setLastGameScore(finalScore);
 
       const currentAddress = address || "0x0000000000000000000000000000000000000000";
 
-      // NOTE: Base App scoring auth can be added later (address-based).
-      // For now we keep existing QuickAuth behavior.
       if (fid === null) {
         setScoreSaveError("Sign-in required to save score.");
         return;
       }
 
-      // Challenge game ise, challenge'ı tamamla
-      if (screen === "challenge-game" && activeChallenge) {
+      // CREATOR: Yeni challenge oluşturuyor
+      if (pendingChallengeData && screen === "challenge-game") {
+        try {
+          const res = await sdk.quickAuth.fetch("/api/challenge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: pendingChallengeData.type,
+              targetUsername: pendingChallengeData.targetUsername,
+              score: finalScore,
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const challenge = data.challenge as Challenge;
+
+            const baseAppUrl = "https://farbase-drop.vercel.app";
+            const challengeUrl = `${baseAppUrl}?challenge=${challenge.id}`;
+            const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
+
+            let castText = "";
+            if (pendingChallengeData.type === "direct" && pendingChallengeData.targetUsername) {
+              castText = `⚔️ @${pendingChallengeData.targetUsername}! I challenge you to beat my ${finalScore} points on FarBase Drop!\n\nBy ${mention}`;
+            } else {
+              castText = `⚔️ Who can beat my ${finalScore} points on FarBase Drop?\n\nBy ${mention}`;
+            }
+
+            await sdk.actions.composeCast({ text: castText, embeds: [challengeUrl] });
+            
+            setPendingChallengeData(null);
+            setScreen("menu");
+            fetchChallengeCount();
+            return;
+          } else {
+            const errData = await res.json();
+            setScoreSaveError(errData.error || "Failed to create challenge");
+          }
+        } catch (e) {
+          console.error("Challenge creation error:", e);
+          setScoreSaveError("Network error — challenge not created");
+        }
+        setPendingChallengeData(null);
+        return;
+      }
+
+      // ACCEPTOR: Mevcut challenge'ı tamamlıyor
+      if (activeChallenge && screen === "challenge-game") {
         try {
           const res = await sdk.quickAuth.fetch("/api/challenge", {
             method: "PUT",
@@ -351,6 +388,7 @@ export default function Home() {
         return;
       }
 
+      // Normal oyun - skor kaydet
       try {
         const res = await sdk.quickAuth.fetch("/api/save-score", {
           method: "POST",
@@ -380,7 +418,7 @@ export default function Home() {
         setScoreSaveError("Network error — score not saved");
       }
     },
-    [fid, address, currentMode, screen, activeChallenge]
+    [fid, address, currentMode, screen, activeChallenge, pendingChallengeData, platform, fetchChallengeCount]
   );
 
   const handleCast = useCallback(async () => {
@@ -403,77 +441,23 @@ export default function Home() {
 
   const handleChallengeFromGameOver = useCallback(() => {
     if (score > 0) {
-      setNewChallengeTargetFid(null);
       setNewChallengeTargetUsername(null);
-      setNewChallengeTargetScore(null);
       setShowNewChallengePopup(true);
     }
   }, [score]);
 
   const handleChallengeFromLeaderboard = useCallback((targetFid: number, targetUsername: string, targetScore: number) => {
-    setNewChallengeTargetFid(targetFid);
     setNewChallengeTargetUsername(targetUsername);
-    setNewChallengeTargetScore(targetScore);
     setShowNewChallengePopup(true);
   }, []);
 
-  const handleCreateChallenge = useCallback(async (
-    type: "open" | "direct",
-    targetUsername: string | null,
-    useCurrentScore: boolean
-  ) => {
-    if (!fid || !username) return;
-
-    try {
-      const res = await sdk.quickAuth.fetch("/api/challenge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type,
-          targetUsername,
-          score: useCurrentScore ? lastGameScore : null,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const challenge = data.challenge as Challenge;
-
-        // Cast ile paylaş - platform bazlı mini app URL
-        const baseAppUrl = "https://farbase-drop.vercel.app";
-        const miniappUrl = platform === "base"
-          ? "https://base.app/app/farbase-drop.vercel.app"
-          : "https://farcaster.xyz/miniapps/cho2c_l-CEGb/farbase-drop";
-        const challengeUrl = `${baseAppUrl}?challenge=${challenge.id}`;
-
-        const mention = platform === "base" ? "@bluexir.farcaster.eth" : "@bluexir";
-
-        let castText = "";
-        if (type === "direct" && targetUsername) {
-          if (challenge.creatorScore) {
-            castText = `⚔️ @${targetUsername}! I challenge you to beat my ${challenge.creatorScore} points on FarBase Drop!\n\nBy ${mention}`;
-          } else {
-            castText = `⚔️ @${targetUsername}! I challenge you to FarBase Drop!\n\nBy ${mention}`;
-          }
-        } else {
-          if (challenge.creatorScore) {
-            castText = `⚔️ Who can beat my ${challenge.creatorScore} points on FarBase Drop?\n\nBy ${mention}`;
-          } else {
-            castText = `⚔️ Who wants to challenge me on FarBase Drop?\n\nBy ${mention}`;
-          }
-        }
-
-        await sdk.actions.composeCast({ text: castText, embeds: [challengeUrl] });
-        setShowNewChallengePopup(false);
-        fetchChallengeCount();
-      } else {
-        const data = await res.json();
-        console.error("Failed to create challenge:", data.error);
-      }
-    } catch (e) {
-      console.error("Challenge creation error:", e);
-    }
-  }, [fid, username, lastGameScore, platform, fetchChallengeCount]);
+  // Popup'tan çağrılır - Oyun başlatır
+  const handleStartChallengeGame = useCallback((type: "open" | "direct", targetUsername: string | null) => {
+    setPendingChallengeData({ type, targetUsername });
+    setActiveChallenge(null);
+    setShowNewChallengePopup(false);
+    startChallengeGame();
+  }, []);
 
   const handleChallengeResultShare = useCallback(async () => {
     if (!completedChallenge) return;
@@ -514,9 +498,7 @@ export default function Home() {
     const opponentUsername = isCreator ? completedChallenge.targetUsername : completedChallenge.creatorUsername;
 
     if (opponentUsername) {
-      setNewChallengeTargetFid(null);
       setNewChallengeTargetUsername(opponentUsername);
-      setNewChallengeTargetScore(null);
       setShowChallengeResult(false);
       setCompletedChallenge(null);
       setActiveChallenge(null);
@@ -541,6 +523,7 @@ export default function Home() {
     async (mode: "practice" | "tournament") => {
       setCurrentMode(mode);
       setActiveChallenge(null);
+      setPendingChallengeData(null);
 
       if (mode === "practice") {
         resetGameStateAndStart("practice");
@@ -590,7 +573,6 @@ export default function Home() {
         const weekKey = getWeekKeyUTC();
         const pendingKey = `farbase:pendingTournament:${currentAddress.toLowerCase()}:${weekKey}`;
 
-        // resume
         try {
           const raw = localStorage.getItem(pendingKey);
           if (raw) {
@@ -657,7 +639,6 @@ export default function Home() {
         const contractInterface = new ethers.Interface(["function enterTournament(address token)"]);
         const enterData = contractInterface.encodeFunctionData("enterTournament", [USDC_ADDRESS]);
 
-        // purchaseId + pending initiated
         const purchaseId = genPurchaseId();
         try {
           const pending: PendingPurchase = { createdAt: Date.now(), purchaseId, stage: "initiated" };
@@ -667,7 +648,6 @@ export default function Home() {
         let paid = false;
         const p = provider as any;
 
-        // batch
         try {
           const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
           const builderCodeSuffix = Attribution.toDataSuffix({ codes: ["bc_va80qhc4"] });
@@ -726,7 +706,6 @@ export default function Home() {
             localStorage.setItem(pendingKey, JSON.stringify(pending));
           } catch {}
         } catch {
-          // fallback approve + enter
           try {
             const approveTx = (await provider.request({
               method: "eth_sendTransaction",
@@ -830,6 +809,25 @@ export default function Home() {
     });
   };
 
+  // Challenge banner text
+  const getChallengeBannerText = () => {
+    if (pendingChallengeData) {
+      if (pendingChallengeData.type === "direct" && pendingChallengeData.targetUsername) {
+        return lang === "tr" 
+          ? `⚔️ @${pendingChallengeData.targetUsername}'a meydan okuyorsun!`
+          : `⚔️ Challenging @${pendingChallengeData.targetUsername}!`;
+      }
+      return lang === "tr" ? "⚔️ Açık meydan okuma!" : "⚔️ Open Challenge!";
+    }
+    if (activeChallenge) {
+      if (activeChallenge.creatorScore) {
+        return `⚔️ Beat @${activeChallenge.creatorUsername}'s ${activeChallenge.creatorScore} pts!`;
+      }
+      return `⚔️ Challenge from @${activeChallenge.creatorUsername}`;
+    }
+    return "";
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: theme === "dark" ? "#000" : "#f5f5f5", position: "relative" }}>
       {screen === "menu" && (
@@ -873,19 +871,16 @@ export default function Home() {
             fetchChallengeCount();
           }}
           onNewChallenge={() => {
-            setNewChallengeTargetFid(null);
             setNewChallengeTargetUsername(null);
-            setNewChallengeTargetScore(null);
             setShowNewChallengePopup(true);
           }}
           onAcceptChallenge={(challenge: Challenge) => {
             setActiveChallenge(challenge);
-            startChallengeGame(challenge);
+            setPendingChallengeData(null);
+            startChallengeGame();
           }}
           onRematch={(opponentUsername: string) => {
-            setNewChallengeTargetFid(null);
             setNewChallengeTargetUsername(opponentUsername);
-            setNewChallengeTargetScore(null);
             setShowNewChallengePopup(true);
           }}
         />
@@ -907,7 +902,7 @@ export default function Home() {
           }}
         >
           {/* Challenge Banner */}
-          {screen === "challenge-game" && activeChallenge && !gameOver && (
+          {screen === "challenge-game" && (activeChallenge || pendingChallengeData) && !gameOver && (
             <div
               style={{
                 width: "100%",
@@ -920,9 +915,7 @@ export default function Home() {
                 fontSize: "0.85rem",
               }}
             >
-              ⚔️ {activeChallenge.creatorScore 
-                ? `Beat @${activeChallenge.creatorUsername}'s ${activeChallenge.creatorScore} pts!`
-                : `Challenge from @${activeChallenge.creatorUsername}`}
+              {getChallengeBannerText()}
             </div>
           )}
 
@@ -991,6 +984,7 @@ export default function Home() {
               onRestart={handleRestart}
               onMenu={() => {
                 setActiveChallenge(null);
+                setPendingChallengeData(null);
                 setScreen("menu");
               }}
               onCast={handleCast}
@@ -1008,10 +1002,9 @@ export default function Home() {
           theme={theme}
           lang={lang}
           platform={platform}
-          currentScore={lastGameScore}
           defaultTargetUsername={newChallengeTargetUsername}
           onClose={() => setShowNewChallengePopup(false)}
-          onCreate={handleCreateChallenge}
+          onStartGame={handleStartChallengeGame}
         />
       )}
     </div>
